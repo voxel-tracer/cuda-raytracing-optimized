@@ -1,6 +1,7 @@
 #ifndef VEC3H
 #define VEC3H
 
+#define _USE_MATH_DEFINES // we need this to get M_PI constant
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
