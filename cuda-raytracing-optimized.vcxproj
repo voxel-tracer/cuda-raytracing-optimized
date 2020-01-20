@@ -20,7 +20,8 @@
     <ClInclude Include="vec3.h" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="main.cu" />
+    <CudaCompile Include="kernels.cu" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{678732DC-FF96-4DED-BA01-D5CEAC0B084E}</ProjectGuid>
