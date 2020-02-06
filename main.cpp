@@ -12,9 +12,10 @@ extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
 int main() {
-    int nx = 1200;
-    int ny = 800;
-    int ns = 10;
+    bool perf = false;
+    int nx = !perf ? 1200 : 600;
+    int ny = !perf ? 800 : 400;
+    int ns = !perf ? 10 : 1;
     int tx = 8;
     int ty = 8;
 
@@ -32,15 +33,17 @@ int main() {
     double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
     std::cerr << "took " << timer_seconds << " seconds.\n";
 
-    // Output FB as Image
-    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
-    for (int j = ny-1; j >= 0; j--) {
-        for (int i = 0; i < nx; i++) {
-            size_t pixel_index = j*nx + i;
-            int ir = int(255.99*fb[pixel_index].r());
-            int ig = int(255.99*fb[pixel_index].g());
-            int ib = int(255.99*fb[pixel_index].b());
-            std::cout << ir << " " << ig << " " << ib << "\n";
+    if (!perf) {
+        // Output FB as Image
+        std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+        for (int j = ny - 1; j >= 0; j--) {
+            for (int i = 0; i < nx; i++) {
+                size_t pixel_index = j * nx + i;
+                int ir = int(255.99 * fb[pixel_index].r());
+                int ig = int(255.99 * fb[pixel_index].g());
+                int ib = int(255.99 * fb[pixel_index].b());
+                std::cout << ir << " " << ig << " " << ib << "\n";
+            }
         }
     }
 
