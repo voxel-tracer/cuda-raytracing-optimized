@@ -8,8 +8,8 @@
 vec3* m_fb;
 curandStatePhilox4_32_10_t * d_rand_state;
 curandStatePhilox4_32_10_t * d_rand_state2;
-hitable** d_list;
-hitable** d_world;
+sphere* d_list;
+hitable_list** d_world;
 camera** d_camera;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
@@ -33,10 +33,10 @@ __global__ void rand_init(curandStatePhilox4_32_10_t * rand_state) {
 
 #define RND (curand_uniform(&local_rand_state))
 
-__global__ void create_world(hitable** d_list, hitable** d_world, camera** d_camera, int nx, int ny, curandStatePhilox4_32_10_t * rand_state) {
+__global__ void create_world(sphere* d_list, hitable_list** d_world, camera** d_camera, int nx, int ny, curandStatePhilox4_32_10_t * rand_state) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
         curandStatePhilox4_32_10_t  local_rand_state = *rand_state;
-        d_list[0] = new sphere(vec3(0, -1000.0, -1), 1000,
+        d_list[0] = sphere(vec3(0, -1000.0, -1), 1000,
             new lambertian(vec3(0.5, 0.5, 0.5)));
         int i = 1;
         for (int a = -11; a < 11; a++) {
@@ -44,21 +44,21 @@ __global__ void create_world(hitable** d_list, hitable** d_world, camera** d_cam
                 float choose_mat = RND;
                 vec3 center(a + RND, 0.2, b + RND);
                 if (choose_mat < 0.8f) {
-                    d_list[i++] = new sphere(center, 0.2,
+                    d_list[i++] = sphere(center, 0.2,
                         new lambertian(vec3(RND * RND, RND * RND, RND * RND)));
                 }
                 else if (choose_mat < 0.95f) {
-                    d_list[i++] = new sphere(center, 0.2,
+                    d_list[i++] = sphere(center, 0.2,
                         new metal(vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
                 }
                 else {
-                    d_list[i++] = new sphere(center, 0.2, new dielectric(1.5));
+                    d_list[i++] = sphere(center, 0.2, new dielectric(1.5));
                 }
             }
         }
-        d_list[i++] = new sphere(vec3(0, 1, 0), 1.0, new dielectric(1.5));
-        d_list[i++] = new sphere(vec3(-4, 1, 0), 1.0, new lambertian(vec3(0.4, 0.2, 0.1)));
-        d_list[i++] = new sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0.0));
+        d_list[i++] = sphere(vec3(0, 1, 0), 1.0, new dielectric(1.5));
+        d_list[i++] = sphere(vec3(-4, 1, 0), 1.0, new lambertian(vec3(0.4, 0.2, 0.1)));
+        d_list[i++] = sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0.0));
         *rand_state = local_rand_state;
         *d_world = new hitable_list(d_list, 22 * 22 + 1 + 3);
 
@@ -89,7 +89,7 @@ __global__ void render_init(int max_x, int max_y, curandStatePhilox4_32_10_t * r
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, hitable** world, curandStatePhilox4_32_10_t * local_rand_state) {
+__device__ vec3 color(const ray& r, hitable_list** world, curandStatePhilox4_32_10_t * local_rand_state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
@@ -115,7 +115,7 @@ __device__ vec3 color(const ray& r, hitable** world, curandStatePhilox4_32_10_t 
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hitable** world, curandStatePhilox4_32_10_t * rand_state) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hitable_list** world, curandStatePhilox4_32_10_t * rand_state) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -136,10 +136,9 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hit
     fb[pixel_index] = col;
 }
 
-__global__ void free_world(hitable** d_list, hitable** d_world, camera** d_camera) {
+__global__ void free_world(sphere* d_list, hitable_list** d_world, camera** d_camera) {
     for (int i = 0; i < 22 * 22 + 1 + 3; i++) {
-        delete ((sphere*)d_list[i])->mat_ptr;
-        delete d_list[i];
+        delete d_list[i].mat_ptr;
     }
     delete* d_world;
     delete* d_camera;
@@ -164,8 +163,8 @@ initRenderer(vec3 * *fb, int nx, int ny) {
 
     // make our world of hitables & the camera
     int num_hitables = 22 * 22 + 1 + 3;
-    checkCudaErrors(cudaMalloc((void**)&d_list, num_hitables * sizeof(hitable*)));
-    checkCudaErrors(cudaMalloc((void**)&d_world, sizeof(hitable*)));
+    checkCudaErrors(cudaMalloc((void**)&d_list, num_hitables*sizeof(sphere)));
+    checkCudaErrors(cudaMalloc((void**)&d_world, sizeof(hitable_list*)));
     checkCudaErrors(cudaMalloc((void**)&d_camera, sizeof(camera*)));
     create_world << <1, 1 >> > (d_list, d_world, d_camera, nx, ny, d_rand_state2);
     checkCudaErrors(cudaGetLastError());
