@@ -12,10 +12,10 @@ extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
 int main() {
-    bool perf = false;
+    bool perf = true;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
-    int ns = !perf ? 10 : 1;
+    int ns = !perf ? 100 : 1;
     int tx = 8;
     int ty = 8;
 
