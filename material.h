@@ -4,6 +4,7 @@
 struct hit_record;
 
 #include "ray.h"
+#include "helper_structs.h"
 
 
 __device__ float schlick(float cosine, float ref_idx) {
@@ -37,27 +38,6 @@ __device__ vec3 random_in_unit_sphere(curandStatePhilox4_32_10_t  *local_rand_st
 __device__ vec3 reflect(const vec3& v, const vec3& n) {
      return v - 2.0f*dot(v,n)*n;
 }
-
-enum material_type {
-    lambertian,
-    dielectric,
-    metal
-};
-
-class material  {
-    public:
-        __device__ material(vec3 a) :albedo(a), type(lambertian) {}
-        __device__ material(vec3 a, float f) :albedo(a), fuzz(f), type(metal) {}
-        __device__ material(float ridx) : ref_idx(ridx), type(dielectric) {}
-        __device__ bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, curandStatePhilox4_32_10_t  *local_rand_state) const;
-
-        material_type type;
-        vec3 albedo;
-        union {
-            float fuzz;
-            float ref_idx;
-        };
-};
 
 __device__ bool scatter_lambertian(const vec3& albedo, const hit_record& rec, vec3& attenuation, ray& scattered, curandStatePhilox4_32_10_t* local_rand_state) {
     vec3 target = rec.p + rec.normal + random_in_unit_sphere(local_rand_state);
@@ -103,15 +83,15 @@ __device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_rec
     return true;
 }
 
-__device__ bool material::scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, curandStatePhilox4_32_10_t* local_rand_state) const {
-    switch (type)
+__device__ bool scatter(const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, curandStatePhilox4_32_10_t* local_rand_state) {
+    switch (m.type)
     {
     case lambertian:
-        return scatter_lambertian(albedo, rec, attenuation, scattered, local_rand_state);
+        return scatter_lambertian(m.albedo, rec, attenuation, scattered, local_rand_state);
     case dielectric:
-        return scatter_dielectric(ref_idx, r_in, rec, attenuation, scattered, local_rand_state);
+        return scatter_dielectric(m.ref_idx, r_in, rec, attenuation, scattered, local_rand_state);
     case metal:
-        return scatter_metal(albedo, fuzz, r_in, rec, attenuation, scattered, local_rand_state);
+        return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, local_rand_state);
     default:
         return false;
     }
