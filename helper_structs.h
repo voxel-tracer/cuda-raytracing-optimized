@@ -6,7 +6,8 @@ struct sphere
 {
     sphere() {}
     sphere(vec3 c, float r) : center(c), radius(r) {}
-    
+    __device__ vec3 normalAt(const vec3& p) const { return (p - center) / radius; }
+
     vec3 center;
     float radius;
 };

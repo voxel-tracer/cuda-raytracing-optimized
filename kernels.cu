@@ -52,7 +52,8 @@ __device__ vec3 color(const ray& r, material* materials, rand_state& state) {
         if (hit(cur_ray, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
-            if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
+
+            if (scatter(d_spheres[rec.hitIdx].normalAt(rec.p), materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
                 cur_attenuation *= attenuation;
                 cur_ray = scattered;
             }

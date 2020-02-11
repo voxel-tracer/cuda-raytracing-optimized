@@ -30,38 +30,38 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
      return v - 2.0f*dot(v,n)*n;
 }
 
-__device__ bool scatter_lambertian(const vec3& albedo, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
-    vec3 target = rec.p + rec.normal + random_in_unit_sphere(state);
+__device__ bool scatter_lambertian(const vec3& normal, const vec3& albedo, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
+    vec3 target = rec.p + normal + random_in_unit_sphere(state);
     scattered = ray(rec.p, target - rec.p);
     attenuation = albedo;
     return true;
 }
 
-__device__ bool scatter_metal(const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
-    vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
+__device__ bool scatter_metal(const vec3& normal, const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
+    vec3 reflected = reflect(unit_vector(r_in.direction()), normal);
     scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
     attenuation = albedo;
-    return (dot(scattered.direction(), rec.normal) > 0.0f);
+    return (dot(scattered.direction(), normal) > 0.0f);
 }
 
-__device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
+__device__ bool scatter_dielectric(const vec3& normal, float ref_idx, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
     vec3 outward_normal;
-    vec3 reflected = reflect(r_in.direction(), rec.normal);
+    vec3 reflected = reflect(r_in.direction(), normal);
     float ni_over_nt;
     attenuation = vec3(1.0, 1.0, 1.0);
     vec3 refracted;
     float reflect_prob;
     float cosine;
-    if (dot(r_in.direction(), rec.normal) > 0.0f) {
-        outward_normal = -rec.normal;
+    if (dot(r_in.direction(), normal) > 0.0f) {
+        outward_normal = -normal;
         ni_over_nt = ref_idx;
-        cosine = dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = dot(r_in.direction(), normal) / r_in.direction().length();
         cosine = sqrt(1.0f - ref_idx * ref_idx * (1 - cosine * cosine));
     }
     else {
-        outward_normal = rec.normal;
+        outward_normal = normal;
         ni_over_nt = 1.0f / ref_idx;
-        cosine = -dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = -dot(r_in.direction(), normal) / r_in.direction().length();
     }
     if (refract(r_in.direction(), outward_normal, ni_over_nt, refracted))
         reflect_prob = schlick(cosine, ref_idx);
@@ -74,15 +74,15 @@ __device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_rec
     return true;
 }
 
-__device__ bool scatter(const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
+__device__ bool scatter(const vec3& normal, const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
     switch (m.type)
     {
     case lambertian:
-        return scatter_lambertian(m.albedo, rec, attenuation, scattered, state);
+        return scatter_lambertian(normal, m.albedo, rec, attenuation, scattered, state);
     case dielectric:
-        return scatter_dielectric(m.ref_idx, r_in, rec, attenuation, scattered, state);
+        return scatter_dielectric(normal, m.ref_idx, r_in, rec, attenuation, scattered, state);
     case metal:
-        return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state);
+        return scatter_metal(normal, m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state);
     default:
         return false;
     }

@@ -7,7 +7,6 @@
 struct hit_record {
     float t;
     vec3 p;
-    vec3 normal;
     int hitIdx;
 };
 
@@ -22,14 +21,12 @@ __device__ bool sphereHit(const sphere& s, const ray& r, float t_min, float t_ma
         if (temp < t_max && temp > t_min) {
             rec.t = temp;
             rec.p = r.point_at_parameter(rec.t);
-            rec.normal = (rec.p - s.center) / s.radius;
             return true;
         }
         temp = (-b + sqrt(discriminant)) / a;
         if (temp < t_max && temp > t_min) {
             rec.t = temp;
             rec.p = r.point_at_parameter(rec.t);
-            rec.normal = (rec.p - s.center) / s.radius;
             return true;
         }
     }
