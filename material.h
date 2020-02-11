@@ -38,7 +38,7 @@ __device__ bool scatter_lambertian(const vec3& normal, const vec3& albedo, const
 }
 
 __device__ bool scatter_metal(const vec3& normal, const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
-    vec3 reflected = reflect(unit_vector(r_in.direction()), normal);
+    vec3 reflected = reflect(r_in.direction(), normal);
     scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
     attenuation = albedo;
     return (dot(scattered.direction(), normal) > 0.0f);
@@ -55,13 +55,13 @@ __device__ bool scatter_dielectric(const vec3& normal, float ref_idx, const ray&
     if (dot(r_in.direction(), normal) > 0.0f) {
         outward_normal = -normal;
         ni_over_nt = ref_idx;
-        cosine = dot(r_in.direction(), normal) / r_in.direction().length();
+        cosine = dot(r_in.direction(), normal);
         cosine = sqrt(1.0f - ref_idx * ref_idx * (1 - cosine * cosine));
     }
     else {
         outward_normal = normal;
         ni_over_nt = 1.0f / ref_idx;
-        cosine = -dot(r_in.direction(), normal) / r_in.direction().length();
+        cosine = -dot(r_in.direction(), normal);
     }
     if (refract(r_in.direction(), outward_normal, ni_over_nt, refracted))
         reflect_prob = schlick(cosine, ref_idx);

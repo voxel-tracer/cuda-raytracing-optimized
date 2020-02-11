@@ -62,8 +62,7 @@ __device__ vec3 color(const ray& r, material* materials, rand_state& state) {
             }
         }
         else {
-            vec3 unit_direction = unit_vector(cur_ray.direction());
-            float t = 0.5f * (unit_direction.y() + 1.0f);
+            float t = 0.5f * (cur_ray.direction().y() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
             return cur_attenuation * c;
         }
