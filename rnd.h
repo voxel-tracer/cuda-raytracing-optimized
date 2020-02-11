@@ -1,5 +1,6 @@
 #pragma once
 
+#include <math_functions.h>
 #include "vec3.h"
 
 typedef unsigned int rand_state;
@@ -43,9 +44,12 @@ __device__ rand_state wang_hash(rand_state seed)
 #define RANDVEC3 vec3(rnd(state), rnd(state), rnd(state))
 
 __device__ vec3 random_in_unit_sphere(rand_state& state) {
-    vec3 p;
-    do {
-        p = 2.0f * RANDVEC3 - vec3(1, 1, 1);
-    } while (p.squared_length() >= 1.0f);
-    return p;
+    float z = rnd(state) * 2.0f - 1.0f;
+    float t = rnd(state) * 2.0f * M_PI;
+    float r = sqrtf(fmaxf(0.0, 1.0f - z * z));
+    float c, s;
+    sincosf(t, &s, &c);
+    vec3 res = vec3(r * c, r * s, z);
+    res *= cbrtf(rnd(state));
+    return res;
 }
