@@ -1,11 +1,11 @@
-#include <curand_kernel.h>
+#include <cuda_runtime.h>
+#include "rnd.h"
 #include "vec3.h"
 #include "camera.h"
 #include "sphere.h"
 #include "material.h"
 
 vec3* m_fb;
-curandStatePhilox4_32_10_t * d_rand_state;
 material* d_materials;
 camera d_camera;
 
@@ -23,17 +23,6 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
         cudaDeviceReset();
         exit(99);
     }
-}
-
-//#define RND (curand_uniform(&local_rand_state))
-
-__global__ void render_init(int max_x, int max_y, curandStatePhilox4_32_10_t * rand_state) {
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    int j = threadIdx.y + blockIdx.y * blockDim.y;
-    if ((i >= max_x) || (j >= max_y)) return;
-    int pixel_index = j * max_x + i;
-    //Each thread gets same seed, a different sequence number, no offset
-    curand_init(1984, pixel_index, 0, &rand_state[pixel_index]);
 }
 
 __device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
@@ -55,7 +44,7 @@ __device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, material* materials, curandStatePhilox4_32_10_t * local_rand_state) {
+__device__ vec3 color(const ray& r, material* materials, rand_state& state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
@@ -63,7 +52,7 @@ __device__ vec3 color(const ray& r, material* materials, curandStatePhilox4_32_1
         if (hit(cur_ray, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
-            if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, local_rand_state)) {
+            if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
                 cur_attenuation *= attenuation;
                 cur_ray = scattered;
             }
@@ -81,20 +70,20 @@ __device__ vec3 color(const ray& r, material* materials, curandStatePhilox4_32_1
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, curandStatePhilox4_32_10_t * rand_state) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
     int pixel_index = j * max_x + i;
-    curandStatePhilox4_32_10_t  local_rand_state = rand_state[pixel_index];
+    rand_state state = (wang_hash(pixel_index) * 336343633) | 1;
+
     vec3 col(0, 0, 0);
     for (int s = 0; s < ns; s++) {
-        float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
-        float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
-        ray r = get_ray(cam, u, v, &local_rand_state);
-        col += color(r, materials, &local_rand_state);
+        float u = float(i + rnd(state)) / float(max_x);
+        float v = float(j + rnd(state)) / float(max_y);
+        ray r = get_ray(cam, u, v, state);
+        col += color(r, materials, state);
     }
-    rand_state[pixel_index] = local_rand_state;
     col /= float(ns);
     col[0] = sqrt(col[0]);
     col[1] = sqrt(col[1]);
@@ -110,9 +99,6 @@ initRenderer(sphere* h_spheres, material* h_materials, const camera cam, vec3 **
     checkCudaErrors(cudaMallocManaged((void**)&m_fb, fb_size));
     *fb = m_fb;
 
-    // allocate random state
-    checkCudaErrors(cudaMalloc((void**)&d_rand_state, num_pixels * sizeof(curandStatePhilox4_32_10_t )));
-
     checkCudaErrors(cudaMalloc((void**)&d_materials, kNumHitable * sizeof(material)));
     checkCudaErrors(cudaMemcpy(d_materials, h_materials, kNumHitable * sizeof(material), cudaMemcpyHostToDevice));
 
@@ -126,10 +112,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render_init <<<blocks, threads >>> (nx, ny, d_rand_state);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_rand_state);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
@@ -138,7 +121,6 @@ extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(d_materials));
-    checkCudaErrors(cudaFree(d_rand_state));
     checkCudaErrors(cudaFree(m_fb));
 
     cudaDeviceReset();

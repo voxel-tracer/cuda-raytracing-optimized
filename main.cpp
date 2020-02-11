@@ -72,7 +72,7 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
 }
 
 int main() {
-    bool perf = false;
+    bool perf = true;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
     int ns = !perf ? 100 : 1;
