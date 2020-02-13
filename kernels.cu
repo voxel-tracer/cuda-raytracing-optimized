@@ -6,10 +6,11 @@
 
 vec3* m_fb;
 curandState* d_rand_state;
-sphere* d_spheres;
 material* d_materials;
-int numHitable;
 camera d_camera;
+
+const int kNumHitable = 22 * 22 + 1 + 3;
+__device__ __constant__ sphere d_spheres[kNumHitable];
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -35,12 +36,12 @@ __global__ void render_init(int max_x, int max_y, curandState* rand_state) {
     curand_init(1984 + pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
-__device__ bool hit(sphere* spheres, int size, const ray& r, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
     hit_record temp_rec;
     bool hit_anything = false;
     float closest_so_far = t_max;
-    for (int i = 0; i < size; i++) {
-        if (sphereHit(spheres[i], r, t_min, closest_so_far, temp_rec)) {
+    for (int i = 0; i < kNumHitable; i++) {
+        if (sphereHit(d_spheres[i], r, t_min, closest_so_far, temp_rec)) {
             hit_anything = true;
             closest_so_far = temp_rec.t;
             rec = temp_rec;
@@ -54,12 +55,12 @@ __device__ bool hit(sphere* spheres, int size, const ray& r, float t_min, float 
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, sphere* spheres, material* materials, int numHitable, curandState* local_rand_state) {
+__device__ vec3 color(const ray& r, material* materials, curandState* local_rand_state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if (hit(spheres, numHitable, cur_ray, 0.001f, FLT_MAX, rec)) {
+        if (hit(cur_ray, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
             if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, local_rand_state)) {
@@ -80,7 +81,7 @@ __device__ vec3 color(const ray& r, sphere* spheres, material* materials, int nu
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, sphere* spheres, material* materials, int numHitable, curandState* rand_state) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, curandState* rand_state) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -91,7 +92,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
         float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
         float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
         ray r = get_ray(cam, u, v, &local_rand_state);
-        col += color(r, spheres, materials, numHitable, &local_rand_state);
+        col += color(r, materials, &local_rand_state);
     }
     rand_state[pixel_index] = local_rand_state;
     col /= float(ns);
@@ -102,7 +103,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
 }
 
 extern "C" void
-initRenderer(sphere* h_spheres, material* h_materials, int _numHitable, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(sphere* h_spheres, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -112,12 +113,10 @@ initRenderer(sphere* h_spheres, material* h_materials, int _numHitable, const ca
     // allocate random state
     checkCudaErrors(cudaMalloc((void**)&d_rand_state, num_pixels * sizeof(curandState)));
 
-    // make our world of hitables & the camera
-    numHitable = _numHitable;
-    checkCudaErrors(cudaMalloc((void**)&d_spheres, numHitable * sizeof(sphere)));
-    checkCudaErrors(cudaMemcpy(d_spheres, h_spheres, numHitable * sizeof(sphere), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMalloc((void**)&d_materials, numHitable * sizeof(material)));
-    checkCudaErrors(cudaMemcpy(d_materials, h_materials, numHitable * sizeof(material), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&d_materials, kNumHitable * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(d_materials, h_materials, kNumHitable * sizeof(material), cudaMemcpyHostToDevice));
+
+    checkCudaErrors(cudaMemcpyToSymbol(d_spheres, h_spheres, kNumHitable * sizeof(sphere)));
 
     d_camera = cam;
 }
@@ -130,7 +129,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     render_init <<<blocks, threads >>> (nx, ny, d_rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_spheres, d_materials, numHitable, d_rand_state);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
@@ -138,7 +137,6 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
 extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
-    checkCudaErrors(cudaFree(d_spheres));
     checkCudaErrors(cudaFree(d_materials));
     checkCudaErrors(cudaFree(d_rand_state));
     checkCudaErrors(cudaFree(m_fb));

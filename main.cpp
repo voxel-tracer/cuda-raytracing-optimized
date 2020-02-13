@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 #include "helper_structs.h"
 
-extern "C" void initRenderer(sphere* h_spheres, material* h_materials, int numHitable, camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(sphere* h_spheres, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
@@ -32,8 +32,8 @@ camera setup_camera(int nx, int ny) {
         dist_to_focus);
 }
 
-void setup_scene(sphere** h_spheres, material** h_materials, int& numHitable) {
-    numHitable = 22 * 22 + 1 + 3;
+void setup_scene(sphere** h_spheres, material** h_materials) {
+    int numHitable = 22 * 22 + 1 + 3;
     sphere* spheres = new sphere[numHitable];
     material* materials = new material[numHitable];
 
@@ -87,10 +87,9 @@ int main() {
     {
         sphere* spheres;
         material* materials;
-        int numHitable;
-        setup_scene(&spheres, &materials, numHitable);
+        setup_scene(&spheres, &materials);
         camera cam = setup_camera(nx, ny);
-        initRenderer(spheres, materials, numHitable, cam, &fb, nx, ny);
+        initRenderer(spheres, materials, cam, &fb, nx, ny);
         delete[] spheres;
         delete[] materials;
     }
