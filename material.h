@@ -4,7 +4,6 @@
 struct hit_record;
 
 #include "ray.h"
-#include "hitable.h"
 
 
 __device__ float schlick(float cosine, float ref_idx) {

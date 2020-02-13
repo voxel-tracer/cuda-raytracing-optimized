@@ -1,13 +1,22 @@
 #ifndef SPHEREH
 #define SPHEREH
 
-#include "hitable.h"
+#include "ray.h"
 
-class sphere: public hitable  {
+class material;
+
+struct hit_record {
+    float t;
+    vec3 p;
+    vec3 normal;
+    material* mat_ptr;
+};
+
+class sphere  {
     public:
         __device__ sphere() {}
         __device__ sphere(vec3 cen, float r, material *m) : center(cen), radius(r), mat_ptr(m)  {};
-        __device__ virtual bool hit(const ray& r, float tmin, float tmax, hit_record& rec) const;
+        __device__ bool hit(const ray& r, float tmin, float tmax, hit_record& rec) const;
         vec3 center;
         float radius;
         material *mat_ptr;
