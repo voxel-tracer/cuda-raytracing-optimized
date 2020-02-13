@@ -5,11 +5,71 @@
 
 // Required to include vec3.h
 #include <cuda_runtime.h>
-#include "vec3.h"
+#include "helper_structs.h"
 
-extern "C" void initRenderer(vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(sphere* h_spheres, material* h_materials, int numHitable, camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
+
+float random_float(unsigned int& state) {
+    state = (214013 * state + 2531011);
+    return (float)((state >> 16) & 0x7FFF) / 32767;
+}
+
+#define RND (random_float(rand_state))
+
+camera setup_camera(int nx, int ny) {
+    vec3 lookfrom(13, 2, 3);
+    vec3 lookat(0, 0, 0);
+    float dist_to_focus = 10.0; (lookfrom - lookat).length();
+    float aperture = 0.1;
+    return camera(lookfrom,
+        lookat,
+        vec3(0, 1, 0),
+        30.0,
+        float(nx) / float(ny),
+        aperture,
+        dist_to_focus);
+}
+
+void setup_scene(sphere** h_spheres, material** h_materials, int& numHitable) {
+    numHitable = 22 * 22 + 1 + 3;
+    sphere* spheres = new sphere[numHitable];
+    material* materials = new material[numHitable];
+
+    unsigned int rand_state = 0;
+
+    materials[0] = material(vec3(0.5, 0.5, 0.5));
+    spheres[0] = sphere(vec3(0, -1000.0, -1), 1000);
+    int i = 1;
+    for (int a = -11; a < 11; a++) {
+        for (int b = -11; b < 11; b++) {
+            float choose_mat = RND;
+            vec3 center(a + RND, 0.2, b + RND);
+            if (choose_mat < 0.8f) {
+                materials[i] = material(vec3(RND * RND, RND * RND, RND * RND));
+                spheres[i++] = sphere(center, 0.2);
+            }
+            else if (choose_mat < 0.95f) {
+                materials[i] = material(vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND);
+                spheres[i++] = sphere(center, 0.2);
+            }
+            else {
+                materials[i] = material(1.5);
+                spheres[i++] = sphere(center, 0.2);
+            }
+        }
+    }
+    materials[i] = material(1.5);
+    spheres[i++] = sphere(vec3(0, 1, 0), 1.0);
+    materials[i] = material(vec3(0.4, 0.2, 0.1));
+    spheres[i++] = sphere(vec3(-4, 1, 0), 1.0);
+    materials[i] = material(vec3(0.7, 0.6, 0.5), 0);
+    spheres[i++] = sphere(vec3(4, 1, 0), 1.0);
+
+    *h_spheres = spheres;
+    *h_materials = materials;
+}
 
 int main() {
     bool perf = false;
@@ -22,9 +82,18 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
-    // allocate FB
+    // init
     vec3 *fb;
-    initRenderer(&fb, nx, ny);
+    {
+        sphere* spheres;
+        material* materials;
+        int numHitable;
+        setup_scene(&spheres, &materials, numHitable);
+        camera cam = setup_camera(nx, ny);
+        initRenderer(spheres, materials, numHitable, cam, &fb, nx, ny);
+        delete[] spheres;
+        delete[] materials;
+    }
 
     clock_t start, stop;
     start = clock();

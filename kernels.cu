@@ -1,16 +1,15 @@
 #include <curand_kernel.h>
 #include "vec3.h"
-#include "hitable_list.h"
 #include "camera.h"
 #include "sphere.h"
 #include "material.h"
 
 vec3* m_fb;
 curandState* d_rand_state;
-curandState* d_rand_state2;
-sphere* d_list;
-hitable_list** d_world;
-camera** d_camera;
+sphere* d_spheres;
+material* d_materials;
+int numHitable;
+camera d_camera;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -25,56 +24,7 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__global__ void rand_init(curandState* rand_state) {
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        curand_init(1984, 0, 0, rand_state);
-    }
-}
-
-#define RND (curand_uniform(&local_rand_state))
-
-__global__ void create_world(sphere* d_list, hitable_list** d_world, camera** d_camera, int nx, int ny, curandState* rand_state) {
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        curandState local_rand_state = *rand_state;
-        d_list[0] = sphere(vec3(0, -1000.0, -1), 1000,
-            new material(vec3(0.5, 0.5, 0.5)));
-        int i = 1;
-        for (int a = -11; a < 11; a++) {
-            for (int b = -11; b < 11; b++) {
-                float choose_mat = RND;
-                vec3 center(a + RND, 0.2, b + RND);
-                if (choose_mat < 0.8f) {
-                    d_list[i++] = sphere(center, 0.2,
-                        new material(vec3(RND * RND, RND * RND, RND * RND)));
-                }
-                else if (choose_mat < 0.95f) {
-                    d_list[i++] = sphere(center, 0.2,
-                        new material(vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
-                }
-                else {
-                    d_list[i++] = sphere(center, 0.2, new material(1.5));
-                }
-            }
-        }
-        d_list[i++] = sphere(vec3(0, 1, 0), 1.0, new material(1.5));
-        d_list[i++] = sphere(vec3(-4, 1, 0), 1.0, new material(vec3(0.4, 0.2, 0.1)));
-        d_list[i++] = sphere(vec3(4, 1, 0), 1.0, new material(vec3(0.7, 0.6, 0.5), 0.0));
-        *rand_state = local_rand_state;
-        *d_world = new hitable_list(d_list, 22 * 22 + 1 + 3);
-
-        vec3 lookfrom(13, 2, 3);
-        vec3 lookat(0, 0, 0);
-        float dist_to_focus = 10.0; (lookfrom - lookat).length();
-        float aperture = 0.1;
-        *d_camera = new camera(lookfrom,
-            lookat,
-            vec3(0, 1, 0),
-            30.0,
-            float(nx) / float(ny),
-            aperture,
-            dist_to_focus);
-    }
-}
+//#define RND (curand_uniform(&local_rand_state))
 
 __global__ void render_init(int max_x, int max_y, curandState* rand_state) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -85,19 +35,34 @@ __global__ void render_init(int max_x, int max_y, curandState* rand_state) {
     curand_init(1984 + pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
+__device__ bool hit(sphere* spheres, int size, const ray& r, float t_min, float t_max, hit_record& rec) {
+    hit_record temp_rec;
+    bool hit_anything = false;
+    float closest_so_far = t_max;
+    for (int i = 0; i < size; i++) {
+        if (sphereHit(spheres[i], r, t_min, closest_so_far, temp_rec)) {
+            hit_anything = true;
+            closest_so_far = temp_rec.t;
+            rec = temp_rec;
+            rec.hitIdx = i;
+        }
+    }
+    return hit_anything;
+}
+
 // Matching the C++ code would recurse enough into color() calls that
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, hitable_list** world, curandState* local_rand_state) {
+__device__ vec3 color(const ray& r, sphere* spheres, material* materials, int numHitable, curandState* local_rand_state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if ((*world)->hit(cur_ray, 0.001f, FLT_MAX, rec)) {
+        if (hit(spheres, numHitable, cur_ray, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
-            if (rec.mat_ptr->scatter(cur_ray, rec, attenuation, scattered, local_rand_state)) {
+            if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, local_rand_state)) {
                 cur_attenuation *= attenuation;
                 cur_ray = scattered;
             }
@@ -115,7 +80,7 @@ __device__ vec3 color(const ray& r, hitable_list** world, curandState* local_ran
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hitable_list** world, curandState* rand_state) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, sphere* spheres, material* materials, int numHitable, curandState* rand_state) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -125,8 +90,8 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hit
     for (int s = 0; s < ns; s++) {
         float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
         float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
-        ray r = (*cam)->get_ray(u, v, &local_rand_state);
-        col += color(r, world, &local_rand_state);
+        ray r = get_ray(cam, u, v, &local_rand_state);
+        col += color(r, spheres, materials, numHitable, &local_rand_state);
     }
     rand_state[pixel_index] = local_rand_state;
     col /= float(ns);
@@ -136,16 +101,8 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hit
     fb[pixel_index] = col;
 }
 
-__global__ void free_world(sphere* d_list, hitable_list** d_world, camera** d_camera) {
-    for (int i = 0; i < 22 * 22 + 1 + 3; i++) {
-        delete d_list[i].mat_ptr;
-    }
-    delete* d_world;
-    delete* d_camera;
-}
-
 extern "C" void
-initRenderer(vec3 * *fb, int nx, int ny) {
+initRenderer(sphere* h_spheres, material* h_materials, int _numHitable, const camera cam, vec3 **fb, int nx, int ny) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -154,21 +111,15 @@ initRenderer(vec3 * *fb, int nx, int ny) {
 
     // allocate random state
     checkCudaErrors(cudaMalloc((void**)&d_rand_state, num_pixels * sizeof(curandState)));
-    checkCudaErrors(cudaMalloc((void**)&d_rand_state2, 1 * sizeof(curandState)));
-
-    // we need that 2nd random state to be initialized for the world creation
-    rand_init <<<1, 1 >>> (d_rand_state2);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
 
     // make our world of hitables & the camera
-    int num_hitables = 22 * 22 + 1 + 3;
-    checkCudaErrors(cudaMalloc((void**)&d_list, num_hitables*sizeof(sphere)));
-    checkCudaErrors(cudaMalloc((void**)&d_world, sizeof(hitable_list*)));
-    checkCudaErrors(cudaMalloc((void**)&d_camera, sizeof(camera*)));
-    create_world << <1, 1 >> > (d_list, d_world, d_camera, nx, ny, d_rand_state2);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
+    numHitable = _numHitable;
+    checkCudaErrors(cudaMalloc((void**)&d_spheres, numHitable * sizeof(sphere)));
+    checkCudaErrors(cudaMemcpy(d_spheres, h_spheres, numHitable * sizeof(sphere), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&d_materials, numHitable * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(d_materials, h_materials, numHitable * sizeof(material), cudaMemcpyHostToDevice));
+
+    d_camera = cam;
 }
 
 extern "C" void
@@ -179,7 +130,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     render_init <<<blocks, threads >>> (nx, ny, d_rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_world, d_rand_state);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_spheres, d_materials, numHitable, d_rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
@@ -187,13 +138,9 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
 extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
-    free_world <<<1, 1 >>> (d_list, d_world, d_camera);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaFree(d_camera));
-    checkCudaErrors(cudaFree(d_world));
-    checkCudaErrors(cudaFree(d_list));
+    checkCudaErrors(cudaFree(d_spheres));
+    checkCudaErrors(cudaFree(d_materials));
     checkCudaErrors(cudaFree(d_rand_state));
-    checkCudaErrors(cudaFree(d_rand_state2));
     checkCudaErrors(cudaFree(m_fb));
 
     cudaDeviceReset();
