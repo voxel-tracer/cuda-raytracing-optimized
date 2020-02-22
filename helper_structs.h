@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cuda_runtime.h>
 #include "vec3.h"
 
 struct sphere
@@ -13,17 +14,15 @@ struct sphere
 
 enum material_type 
 {
-    lambertian,
-    dielectric,
-    metal
+    LAMBERTIAN,
+    DIELECTRIC,
+    METAL
 };
 
 struct material 
 {
     material() {}
-    material(vec3 a) : type(material_type::lambertian), albedo(a), fuzz(0) {}
-    material(vec3 a, float f) : type(material_type::metal), albedo(a), fuzz(f) {}
-    material(float ridx) : type(material_type::dielectric), ref_idx(ridx) {}
+    material(material_type t, vec3 a, float f): type(t), albedo(a), fuzz(f) {}
 
     material_type type;
     vec3 albedo;
@@ -32,6 +31,10 @@ struct material
         float ref_idx;
     };
 };
+
+material new_lambertian(vec3 albedo);
+material new_dielectric(float ref_idx);
+material new_metal(vec3 albedo, float fuzz);
 
 struct camera
 {

@@ -4,7 +4,6 @@
 
 
 // Required to include vec3.h
-#include <cuda_runtime.h>
 #include "helper_structs.h"
 
 extern "C" void initRenderer(sphere* h_spheres, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
@@ -39,7 +38,7 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
 
     unsigned int rand_state = 0;
 
-    materials[0] = material(vec3(0.5, 0.5, 0.5));
+    materials[0] = new_lambertian(vec3(0.5, 0.5, 0.5));
     spheres[0] = sphere(vec3(0, -1000.0, -1), 1000);
     int i = 1;
     for (int a = -11; a < 11; a++) {
@@ -47,24 +46,24 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
             float choose_mat = RND;
             vec3 center(a + RND, 0.2, b + RND);
             if (choose_mat < 0.8f) {
-                materials[i] = material(vec3(RND * RND, RND * RND, RND * RND));
+                materials[i] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
                 spheres[i++] = sphere(center, 0.2);
             }
             else if (choose_mat < 0.95f) {
-                materials[i] = material(vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND);
+                materials[i] = new_metal(vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND);
                 spheres[i++] = sphere(center, 0.2);
             }
             else {
-                materials[i] = material(1.5);
+                materials[i] = new_dielectric(1.5);
                 spheres[i++] = sphere(center, 0.2);
             }
         }
     }
-    materials[i] = material(1.5);
+    materials[i] = new_dielectric(1.5);
     spheres[i++] = sphere(vec3(0, 1, 0), 1.0);
-    materials[i] = material(vec3(0.4, 0.2, 0.1));
+    materials[i] = new_lambertian(vec3(0.4, 0.2, 0.1));
     spheres[i++] = sphere(vec3(-4, 1, 0), 1.0);
-    materials[i] = material(vec3(0.7, 0.6, 0.5), 0);
+    materials[i] = new_metal(vec3(0.7, 0.6, 0.5), 0);
     spheres[i++] = sphere(vec3(4, 1, 0), 1.0);
 
     *h_spheres = spheres;

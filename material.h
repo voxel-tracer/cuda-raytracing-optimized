@@ -77,11 +77,11 @@ __device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_rec
 __device__ bool scatter(const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
     switch (m.type)
     {
-    case lambertian:
+    case LAMBERTIAN:
         return scatter_lambertian(m.albedo, rec, attenuation, scattered, state);
-    case dielectric:
+    case DIELECTRIC:
         return scatter_dielectric(m.ref_idx, r_in, rec, attenuation, scattered, state);
-    case metal:
+    case METAL:
         return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state);
     default:
         return false;
