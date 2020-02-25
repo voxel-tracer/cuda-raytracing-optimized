@@ -46,7 +46,7 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
             float choose_mat = RND;
             vec3 center(a + RND, 0.2, b + RND);
             if (choose_mat < 0.8f) {
-                materials[i] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
+                materials[i] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
                 spheres[i++] = sphere(center, 0.2);
             }
             else if (choose_mat < 0.95f) {
@@ -61,7 +61,7 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
     }
     materials[i] = new_dielectric(1.5);
     spheres[i++] = sphere(vec3(0, 1, 0), 1.0);
-    materials[i] = new_lambertian(vec3(0.4, 0.2, 0.1));
+    materials[i] = new_coat(vec3(0.4, 0.2, 0.1), 1.5f);
     spheres[i++] = sphere(vec3(-4, 1, 0), 1.0);
     materials[i] = new_metal(vec3(0.7, 0.6, 0.5), 0);
     spheres[i++] = sphere(vec3(4, 1, 0), 1.0);

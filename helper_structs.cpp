@@ -11,3 +11,7 @@ material new_dielectric(float ref_idx) {
 material new_metal(vec3 albedo, float fuzz) {
     return material(METAL, albedo, fuzz);
 }
+
+material new_coat(vec3 albedo, float ref_idx) {
+    return material(COAT, albedo, ref_idx);
+}

@@ -16,7 +16,8 @@ enum material_type
 {
     LAMBERTIAN,
     DIELECTRIC,
-    METAL
+    METAL,
+    COAT
 };
 
 struct material 
@@ -35,6 +36,7 @@ struct material
 material new_lambertian(vec3 albedo);
 material new_dielectric(float ref_idx);
 material new_metal(vec3 albedo, float fuzz);
+material new_coat(vec3 albedo, float ref_idx);
 
 struct camera
 {
