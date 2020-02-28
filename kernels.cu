@@ -8,6 +8,9 @@
 vec3* m_fb;
 material* d_materials;
 camera d_camera;
+float* d_hdri = NULL;
+int hdri_x;
+int hdri_y;
 
 const int kNumHitable = 22 * 22 + 1 + 3;
 __device__ __constant__ sphere d_spheres[kNumHitable];
@@ -44,7 +47,7 @@ __device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, material* materials, rand_state& state) {
+__device__ vec3 color(const ray& r, material* materials, const float* hdri, rand_state& state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
@@ -61,16 +64,20 @@ __device__ vec3 color(const ray& r, material* materials, rand_state& state) {
             }
         }
         else {
-            vec3 unit_direction = unit_vector(cur_ray.direction());
-            float t = 0.5f * (unit_direction.y() + 1.0f);
-            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+            vec3 dir = unit_vector(cur_ray.direction());
+            uint2 coords = make_uint2(-atan2(dir.x(), dir.z()) * 1024 / (2 * M_PI), acos(dir.y()) * 512 / M_PI);
+            vec3 c(
+                hdri[(coords.y * 1024 + coords.x)*3],
+                hdri[(coords.y * 1024 + coords.x)*3 + 1],
+                hdri[(coords.y * 1024 + coords.x)*3 + 2]
+            );
             return cur_attenuation * c;
         }
     }
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, const float* hdri) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -82,7 +89,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
         float u = float(i + rnd(state)) / float(max_x);
         float v = float(j + rnd(state)) / float(max_y);
         ray r = get_ray(cam, u, v, state);
-        col += color(r, materials, state);
+        col += color(r, materials, hdri, state);
     }
     col /= float(ns);
     col[0] = sqrt(col[0]);
@@ -107,12 +114,18 @@ initRenderer(sphere* h_spheres, material* h_materials, const camera cam, vec3 **
     d_camera = cam;
 }
 
+extern "C" 
+void initHDRi(float* data, int x, int y, int n) {
+    checkCudaErrors(cudaMalloc((void**)&d_hdri, x * y * n * sizeof(float)));
+    checkCudaErrors(cudaMemcpy(d_hdri, data, x * y * n * sizeof(float), cudaMemcpyHostToDevice));
+}
+
 extern "C" void
 runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_hdri);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
@@ -122,6 +135,7 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(d_materials));
     checkCudaErrors(cudaFree(m_fb));
+    if (d_hdri != NULL) checkCudaErrors(cudaFree(d_hdri));
 
     cudaDeviceReset();
 }

@@ -2,11 +2,14 @@
 #include <time.h>
 #include <float.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 // Required to include vec3.h
 #include "helper_structs.h"
 
 extern "C" void initRenderer(sphere* h_spheres, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initHDRi(float* data, int x, int y, int n);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
@@ -71,10 +74,10 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
 }
 
 int main() {
-    bool perf = false;
+    bool perf = true;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
-    int ns = !perf ? 100 : 1;
+    int ns = !perf ? 1000 : 1;
     int tx = 8;
     int ty = 8;
 
@@ -88,9 +91,23 @@ int main() {
         material* materials;
         setup_scene(&spheres, &materials);
         camera cam = setup_camera(nx, ny);
+
         initRenderer(spheres, materials, cam, &fb, nx, ny);
         delete[] spheres;
         delete[] materials;
+
+        // load hdri
+        int x, y, n;
+        float* data = stbi_loadf("spruit_sunrise_1k.hdr", &x, &y, &n, 0);
+        float max = 0;
+        for (int i = 0; i < (x * y * n); i++) {
+            max = fmaxf(max, data[i]);
+        }
+
+        printf("max = %f\n", max);
+        std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
+        initHDRi(data, x, y, n);
+        stbi_image_free(data);
     }
 
     clock_t start, stop;

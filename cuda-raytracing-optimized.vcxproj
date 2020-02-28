@@ -17,6 +17,7 @@
     <ClInclude Include="ray.h" />
     <ClInclude Include="rnd.h" />
     <ClInclude Include="sphere.h" />
+    <ClInclude Include="stb_image.h" />
     <ClInclude Include="vec3.h" />
   </ItemGroup>
   <ItemGroup>
