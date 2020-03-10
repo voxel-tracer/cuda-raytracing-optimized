@@ -73,11 +73,22 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
     *h_materials = materials;
 }
 
+// http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html
+uint32_t LinearToSRGB(float x)
+{
+    x = fmaxf(x, 0.0f);
+    x = fmaxf(1.055f * powf(x, 0.416666667f) - 0.055f, 0.0f);
+    // u = min((uint32_t)(x * 255.9f), 255u)
+    uint32_t u = (uint32_t)(x * 255.9f);
+    u = u < 255u ? u : 255u;
+    return u;
+}
+
 int main() {
-    bool perf = true;
+    bool perf = false;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
-    int ns = !perf ? 1000 : 1;
+    int ns = !perf ? 2048 : 1;
     int tx = 8;
     int ty = 8;
 
@@ -98,13 +109,12 @@ int main() {
 
         // load hdri
         int x, y, n;
-        float* data = stbi_loadf("spruit_sunrise_1k.hdr", &x, &y, &n, 0);
+        float* data = stbi_loadf("lebombo_1k.hdr", &x, &y, &n, 0);
         float max = 0;
         for (int i = 0; i < (x * y * n); i++) {
             max = fmaxf(max, data[i]);
         }
 
-        printf("max = %f\n", max);
         std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
         initHDRi(data, x, y, n);
         stbi_image_free(data);
@@ -123,9 +133,9 @@ int main() {
         for (int j = ny - 1; j >= 0; j--) {
             for (int i = 0; i < nx; i++) {
                 size_t pixel_index = j * nx + i;
-                int ir = int(255.99 * fb[pixel_index].r());
-                int ig = int(255.99 * fb[pixel_index].g());
-                int ib = int(255.99 * fb[pixel_index].b());
+                int ir = LinearToSRGB(fb[pixel_index].r());
+                int ig = LinearToSRGB(fb[pixel_index].g());
+                int ib = LinearToSRGB(fb[pixel_index].b());
                 std::cout << ir << " " << ig << " " << ib << "\n";
             }
         }
