@@ -49,7 +49,10 @@ __device__ bool hit_box(const vec3& center, const ray& r, float t_min, float t_m
 
     rec.t = t_min;
     vec3 normal(0, 0, 0);
-    normal[axis] = r.direction()[axis] < 0 ? 1 : -1;
+    //normal[axis] = r.direction()[axis] < 0 ? 1 : -1;
+    if (axis == 0) normal[0] = r.direction().x() < 0 ? 1 : -1;
+    else if (axis == 1) normal[1] = r.direction().y() < 0 ? 1 : -1;
+    else normal[2] = r.direction().z() < 0 ? 1 : -1;
     rec.p = r.point_at_parameter(rec.t);
     rec.normal = normal;
 
