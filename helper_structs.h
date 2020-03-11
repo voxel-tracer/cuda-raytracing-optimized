@@ -2,6 +2,15 @@
 
 #include "vec3.h"
 
+
+struct block {
+    uint16_t coords;
+    uint64_t voxels;
+
+    block() {}
+    block(uint16_t c, uint64_t v) : coords(c), voxels(v) {}
+};
+
 struct sphere
 {
     sphere() {}

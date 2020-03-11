@@ -1,13 +1,14 @@
 #include <iostream>
 #include <time.h>
 #include <float.h>
+#include <fstream>
 
 
 // Required to include vec3.h
 #include <cuda_runtime.h>
 #include "helper_structs.h"
 
-extern "C" void initRenderer(sphere* h_spheres, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(block* h_blocks, int numBlocks, uint3 center, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
@@ -19,9 +20,9 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny) {
-    vec3 lookfrom(13, 2, 3);
+    vec3 lookfrom(256, 200, 256);
     vec3 lookat(0, 0, 0);
-    float dist_to_focus = 10.0; (lookfrom - lookat).length();
+    float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
         lookat,
@@ -30,6 +31,34 @@ camera setup_camera(int nx, int ny) {
         float(nx) / float(ny),
         aperture,
         dist_to_focus);
+}
+
+void loadFromVxt(const std::string& filepath, block** h_blocks, int &numBlocks, uint3 &center, material** h_materials) {
+    const int coordRes = 128;
+    const int blockRes = 32;
+
+    std::fstream in(filepath, std::ios::in | std::ios::binary);
+    // read magic word and confirm it's a supported file format
+    char* MAGIC = "VXT_0.2";
+    char magic[sizeof(MAGIC)];
+    in.read(magic, sizeof(MAGIC));
+    if (strcmp(MAGIC, magic)) {
+        std::cerr << "invalid header " << magic << std::endl;
+        exit(-1);
+    }
+
+    int numVoxels = 0;
+    in.read((char*)&numVoxels, sizeof(int));
+    in.read((char*)&numBlocks, sizeof(int));
+    in.read((char*)&center, sizeof(uint3));
+    block* blocks = new block[numBlocks];
+    in.read((char*)blocks, numBlocks * sizeof(block));
+
+    material* materials = new material[1];
+    materials[0] = material(vec3(0.5, 0.5, 0.5));
+
+    *h_blocks = blocks;
+    *h_materials = materials;
 }
 
 void setup_scene(sphere** h_spheres, material** h_materials) {
@@ -72,12 +101,13 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
 }
 
 int main() {
-    bool perf = false;
+    bool perf = true;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
     int ns = !perf ? 100 : 1;
     int tx = 8;
     int ty = 8;
+    std::string input = "D:\\models\\xyzrgb_dragon_cleaned.v2.vxt";
 
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
@@ -85,12 +115,14 @@ int main() {
     // init
     vec3 *fb;
     {
-        sphere* spheres;
+        block* blocks;
+        int numBlocks;
         material* materials;
-        setup_scene(&spheres, &materials);
+        uint3 center;
+        loadFromVxt(input, &blocks, numBlocks, center, &materials);
         camera cam = setup_camera(nx, ny);
-        initRenderer(spheres, materials, cam, &fb, nx, ny);
-        delete[] spheres;
+        initRenderer(blocks, numBlocks, center, materials, cam, &fb, nx, ny);
+        delete[] blocks;
         delete[] materials;
     }
 
