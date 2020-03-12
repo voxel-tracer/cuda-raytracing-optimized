@@ -29,12 +29,12 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__device__ bool hit_box(const vec3& center, const ray& r, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit_box(const vec3& center, int halfSize, const ray& r, float t_min, float t_max, hit_record& rec) {
     int axis = 0;
     for (int a = 0; a < 3; a++) {
         float invD = 1.0f / r.direction()[a];
-        float t0 = (center[a] - 1 - r.origin()[a]) * invD;
-        float t1 = (center[a] + 1 - r.origin()[a]) * invD;
+        float t0 = (center[a] - halfSize - r.origin()[a]) * invD;
+        float t1 = (center[a] + halfSize - r.origin()[a]) * invD;
         if (invD < 0.0f) {
             float tmp = t0; t0 = t1; t1 = tmp;
         }
@@ -49,7 +49,6 @@ __device__ bool hit_box(const vec3& center, const ray& r, float t_min, float t_m
 
     rec.t = t_min;
     vec3 normal(0, 0, 0);
-    //normal[axis] = r.direction()[axis] < 0 ? 1 : -1;
     if (axis == 0) normal[0] = r.direction().x() < 0 ? 1 : -1;
     else if (axis == 1) normal[1] = r.direction().y() < 0 ? 1 : -1;
     else normal[2] = r.direction().z() < 0 ? 1 : -1;
@@ -75,6 +74,9 @@ __device__ bool hit(const ray& r, int numBlocks, const uint3 &center, float t_mi
         int by = ((b.coords >> 5) % blockRes) << 2;
         int bz = ((b.coords >> 10) % blockRes) << 2;
 
+        if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 5, r, t_min, closest_so_far, temp_rec))
+            continue;
+
         // loop through all voxels and identify the ones that are set
         for (int xi = 0; xi < 4; xi++) {
             for (int yi = 0; yi < 4; yi++) {
@@ -87,7 +89,7 @@ __device__ bool hit(const ray& r, int numBlocks, const uint3 &center, float t_mi
                         int y = by + yi;
                         int z = bz + zi - center.z;
 
-                        if (hit_box(vec3(x, y, z) * 2, r, t_min, closest_so_far, temp_rec)) {
+                        if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
                             hit_anything = true;
                             closest_so_far = temp_rec.t;
                             rec = temp_rec;
