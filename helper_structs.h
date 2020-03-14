@@ -6,9 +6,20 @@
 struct block {
     uint16_t coords;
     uint64_t voxels;
+    uint16_t idx;
 
     block() {}
-    block(uint16_t c, uint64_t v) : coords(c), voxels(v) {}
+    block(uint16_t c, uint64_t v, uint16_t i) : coords(c), voxels(v), idx(i) {}
+};
+
+struct voxelModel {
+    int numVoxels;
+    int numBlocks;
+    int numUBlocks;
+
+    block* blocks;
+    block* ublocks;
+    uint3 center;
 };
 
 struct sphere

@@ -8,7 +8,7 @@
 #include <cuda_runtime.h>
 #include "helper_structs.h"
 
-extern "C" void initRenderer(block* h_blocks, int numBlocks, uint3 center, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(const voxelModel &model, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
@@ -33,13 +33,13 @@ camera setup_camera(int nx, int ny) {
         dist_to_focus);
 }
 
-void loadFromVxt(const std::string& filepath, block** h_blocks, int &numBlocks, uint3 &center, material** h_materials) {
+void loadFromVxt(const std::string& filepath, voxelModel &model, material** h_materials) {
     const int coordRes = 128;
     const int blockRes = 32;
 
     std::fstream in(filepath, std::ios::in | std::ios::binary);
     // read magic word and confirm it's a supported file format
-    char* MAGIC = "VXT_0.2";
+    char* MAGIC = "VXT_0.3";
     char magic[sizeof(MAGIC)];
     in.read(magic, sizeof(MAGIC));
     if (strcmp(MAGIC, magic)) {
@@ -47,17 +47,20 @@ void loadFromVxt(const std::string& filepath, block** h_blocks, int &numBlocks, 
         exit(-1);
     }
 
-    int numVoxels = 0;
-    in.read((char*)&numVoxels, sizeof(int));
-    in.read((char*)&numBlocks, sizeof(int));
-    in.read((char*)&center, sizeof(uint3));
-    block* blocks = new block[numBlocks];
-    in.read((char*)blocks, numBlocks * sizeof(block));
+    in.read((char*)&model.numVoxels, sizeof(int));
+    in.read((char*)&model.numBlocks, sizeof(int));
+    in.read((char*)&model.numUBlocks, sizeof(int));
+    in.read((char*)&model.center, sizeof(uint3));
+
+    model.blocks = new block[model.numBlocks];
+    in.read((char*)model.blocks, model.numBlocks * sizeof(block));
+
+    model.ublocks = new block[model.numUBlocks];
+    in.read((char*)model.ublocks, model.numUBlocks * sizeof(block));
 
     material* materials = new material[1];
     materials[0] = material(vec3(0.5, 0.5, 0.5));
 
-    *h_blocks = blocks;
     *h_materials = materials;
 }
 
@@ -101,13 +104,13 @@ void setup_scene(sphere** h_spheres, material** h_materials) {
 }
 
 int main() {
-    bool perf = true;
+    bool perf = false;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
     int ns = !perf ? 100 : 1;
     int tx = 8;
     int ty = 8;
-    std::string input = "D:\\models\\xyzrgb_dragon_cleaned.v2.vxt";
+    std::string input = "D:\\models\\xyzrgb_dragon_cleaned.v3.vxt";
 
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
@@ -115,14 +118,13 @@ int main() {
     // init
     vec3 *fb;
     {
-        block* blocks;
-        int numBlocks;
+        voxelModel model;
         material* materials;
-        uint3 center;
-        loadFromVxt(input, &blocks, numBlocks, center, &materials);
+        loadFromVxt(input, model, &materials);
         camera cam = setup_camera(nx, ny);
-        initRenderer(blocks, numBlocks, center, materials, cam, &fb, nx, ny);
-        delete[] blocks;
+        initRenderer(model, materials, cam, &fb, nx, ny);
+        delete[] model.blocks;
+        delete[] model.ublocks;
         delete[] materials;
     }
 

@@ -158,7 +158,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
 }
 
 extern "C" void
-initRenderer(block* h_blocks, int numBlocks, uint3 center, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const voxelModel &model, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -168,9 +168,9 @@ initRenderer(block* h_blocks, int numBlocks, uint3 center, material* h_materials
     checkCudaErrors(cudaMalloc((void**)&d_materials, sizeof(material)));
     checkCudaErrors(cudaMemcpy(d_materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
 
-    d_center = center;
-    d_numBlocks = numBlocks;
-    checkCudaErrors(cudaMemcpyToSymbol(d_blocks, h_blocks, numBlocks * sizeof(block)));
+    d_center = model.center;
+    d_numBlocks = model.numBlocks;
+    checkCudaErrors(cudaMemcpyToSymbol(d_blocks, model.blocks, model.numBlocks * sizeof(block)));
 
     d_camera = cam;
 }
