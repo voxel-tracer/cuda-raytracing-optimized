@@ -14,6 +14,11 @@ camera d_camera;
 const int kMaxBlocks = 2000;
 __device__ __constant__ block d_blocks[kMaxBlocks];
 int d_numBlocks;
+
+const int kMaxUBlocks = 100;
+__device__ __constant__ block d_ublocks[kMaxUBlocks];
+int d_numUBlocks;
+
 uint3 d_center;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
@@ -58,41 +63,60 @@ __device__ bool hit_box(const vec3& center, int halfSize, const ray& r, float t_
     return true;
 }
 
-__device__ bool hit(const ray& r, int numBlocks, const uint3 &center, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &center, float t_min, float t_max, hit_record& rec) {
     const int coordRes = 128;
     const int blockRes = 32;
+    const int ublockRes = 8;
 
     hit_record temp_rec;
     bool hit_anything = false;
     float closest_so_far = t_max;
 
-    // loop through all voxels
-    for (int i = 0; i < numBlocks; i++) {
-        const block& b = d_blocks[i];
-        // decode block coordinates
-        int bx = (b.coords % blockRes) << 2;
-        int by = ((b.coords >> 5) % blockRes) << 2;
-        int bz = ((b.coords >> 10) % blockRes) << 2;
+    // loop through all ublocks
+    for (int ui = 0; ui < numUBlocks; ui++) {
+        const block& u = d_ublocks[ui];
+        // decode ublock coordinates at 8^3 resolution
+        int ux = (u.coords % ublockRes);
+        int uy = ((u.coords >> 3) % ublockRes);
+        int uz = ((u.coords >> 6) % ublockRes);
 
-        if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 5, r, t_min, closest_so_far, temp_rec))
+        // compute ublock center at 128^3, voxel, resolution
+        const vec3 ucenter(
+            (float)(ux)*16 + 7.5 - center.x,
+            (float)(uy)*16 + 7.5,
+            (float)(uz)*16 + 7.5 - center.z);
+        if (!hit_box(ucenter * 2, 17, r, t_min, closest_so_far, temp_rec))
             continue;
 
-        // loop through all voxels and identify the ones that are set
-        for (int xi = 0; xi < 4; xi++) {
-            for (int yi = 0; yi < 4; yi++) {
-                for (int zi = 0; zi < 4; zi++) {
-                    // compute voxel bit idx
-                    int voxelBitIdx = xi + (yi << 2) + (zi << 4);
-                    if (b.voxels & (1ULL << voxelBitIdx)) {
-                        // compute voxel coordinates, centering the model around the origin
-                        int x = bx + xi - center.x;
-                        int y = by + yi;
-                        int z = bz + zi - center.z;
+        const int lastBlockIdx = u.idx + __popcll(u.voxels); // count number of active blocks in current ublock
+        // loop through all blocks
+        for (int bi = u.idx; bi < lastBlockIdx; bi++) {
+            const block& b = d_blocks[bi];
+            // decode block coordinates
+            int bx = (b.coords % blockRes) << 2;
+            int by = ((b.coords >> 5) % blockRes) << 2;
+            int bz = ((b.coords >> 10) % blockRes) << 2;
 
-                        if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
-                            hit_anything = true;
-                            closest_so_far = temp_rec.t;
-                            rec = temp_rec;
+            if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 5, r, t_min, closest_so_far, temp_rec))
+                continue;
+
+            // loop through all voxels and identify the ones that are set
+            for (int xi = 0; xi < 4; xi++) {
+                for (int yi = 0; yi < 4; yi++) {
+                    for (int zi = 0; zi < 4; zi++) {
+                        // compute voxel bit idx
+                        int voxelBitIdx = xi + (yi << 2) + (zi << 4);
+                        if (b.voxels & (1ULL << voxelBitIdx)) {
+                            // compute voxel coordinates, centering the model around the origin
+                            int x = bx + xi - center.x;
+                            int y = by + yi;
+                            int z = bz + zi - center.z;
+
+                            if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
+                                hit_anything = true;
+                                closest_so_far = temp_rec.t;
+                                rec = temp_rec;
+                            }
                         }
                     }
                 }
@@ -110,12 +134,12 @@ __device__ bool hit(const ray& r, int numBlocks, const uint3 &center, float t_mi
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, int numBlocks, const uint3& center, material* materials, rand_state& state) {
+__device__ vec3 color(const ray& r, int numUBlocks, int numBlocks, const uint3& center, material* materials, rand_state& state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if (hit(cur_ray, numBlocks, center, 0.001f, FLT_MAX, rec)) {
+        if (hit(cur_ray, numUBlocks, numBlocks, center, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
             if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
@@ -136,7 +160,7 @@ __device__ vec3 color(const ray& r, int numBlocks, const uint3& center, material
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, int numBlocks, uint3 center) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, int numUBlocks, int numBlocks, uint3 center) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -148,7 +172,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
         float u = float(i + rnd(state)) / float(max_x);
         float v = float(j + rnd(state)) / float(max_y);
         ray r = get_ray(cam, u, v, state);
-        col += color(r, numBlocks, center, materials, state);
+        col += color(r, numUBlocks, numBlocks, center, materials, state);
     }
     col /= float(ns);
     col[0] = sqrt(col[0]);
@@ -172,6 +196,9 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     d_numBlocks = model.numBlocks;
     checkCudaErrors(cudaMemcpyToSymbol(d_blocks, model.blocks, model.numBlocks * sizeof(block)));
 
+    d_numUBlocks = model.numUBlocks;
+    checkCudaErrors(cudaMemcpyToSymbol(d_ublocks, model.ublocks, model.numUBlocks * sizeof(block)));
+
     d_camera = cam;
 }
 
@@ -180,7 +207,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_numBlocks, d_center);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_numUBlocks, d_numBlocks, d_center);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
