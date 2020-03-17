@@ -34,7 +34,7 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__device__ bool hit_box(const vec3& center, int halfSize, const ray& r, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit_box(const vec3& center, float halfSize, const ray& r, float t_min, float t_max, hit_record& rec) {
     int axis = 0;
     for (int a = 0; a < 3; a++) {
         float invD = 1.0f / r.direction()[a];
@@ -85,7 +85,7 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
             (float)(ux)*16 + 7.5 - center.x,
             (float)(uy)*16 + 7.5,
             (float)(uz)*16 + 7.5 - center.z);
-        if (!hit_box(ucenter * 2, 17, r, t_min, closest_so_far, temp_rec))
+        if (!hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec))
             continue;
 
         const int lastBlockIdx = u.idx + __popcll(u.voxels); // count number of active blocks in current ublock
@@ -97,7 +97,7 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
             int by = ((b.coords >> 5) % blockRes) << 2;
             int bz = ((b.coords >> 10) % blockRes) << 2;
 
-            if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 5, r, t_min, closest_so_far, temp_rec))
+            if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec))
                 continue;
 
             // loop through all voxels and identify the ones that are set
