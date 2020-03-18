@@ -21,6 +21,9 @@ int d_numUBlocks;
 
 uint3 d_center;
 
+// num traced rays
+__device__ uint64_t *d_numRays;
+
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
@@ -134,10 +137,12 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, int numUBlocks, int numBlocks, const uint3& center, material* materials, rand_state& state) {
+__device__ vec3 color(const ray& r, int numUBlocks, int numBlocks, const uint3& center, material* materials, rand_state& state, uint64_t *numRays) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
+        atomicAdd(numRays, 1);
+
         hit_record rec;
         if (hit(cur_ray, numUBlocks, numBlocks, center, 0.001f, FLT_MAX, rec)) {
             ray scattered;
@@ -160,7 +165,7 @@ __device__ vec3 color(const ray& r, int numUBlocks, int numBlocks, const uint3& 
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, int numUBlocks, int numBlocks, uint3 center) {
+__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, int numUBlocks, int numBlocks, uint3 center, uint64_t *numRays) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -172,7 +177,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
         float u = float(i + rnd(state)) / float(max_x);
         float v = float(j + rnd(state)) / float(max_y);
         ray r = get_ray(cam, u, v, state);
-        col += color(r, numUBlocks, numBlocks, center, materials, state);
+        col += color(r, numUBlocks, numBlocks, center, materials, state, numRays);
     }
     col /= float(ns);
     col[0] = sqrt(col[0]);
@@ -199,6 +204,9 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     d_numUBlocks = model.numUBlocks;
     checkCudaErrors(cudaMemcpyToSymbol(d_ublocks, model.ublocks, model.numUBlocks * sizeof(block)));
 
+    checkCudaErrors(cudaMalloc((void**)&d_numRays, sizeof(uint64_t)));
+    checkCudaErrors(cudaMemset(d_numRays, 0, sizeof(uint64_t)));
+
     d_camera = cam;
 }
 
@@ -207,9 +215,13 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_numUBlocks, d_numBlocks, d_center);
+    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_numUBlocks, d_numBlocks, d_center, d_numRays);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
+
+    uint64_t numRays = 0;
+    checkCudaErrors(cudaMemcpy((void*)&numRays, d_numRays, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+    std::cerr << "total rays traced = " << numRays << std::endl;
 }
 
 extern "C" void
@@ -217,6 +229,7 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(d_materials));
     checkCudaErrors(cudaFree(m_fb));
+    checkCudaErrors(cudaFree(d_numRays));
 
     cudaDeviceReset();
 }
