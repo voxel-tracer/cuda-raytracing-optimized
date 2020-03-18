@@ -20,8 +20,8 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny) {
-    vec3 lookfrom(256, 200, 256);
-    vec3 lookat(0, 0, 0);
+    vec3 lookfrom(100, 150, 300);
+    vec3 lookat(25, 35, 0);
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
