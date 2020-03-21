@@ -7,6 +7,11 @@
 #include "sphere.h"
 #include "material.h"
 
+//#define UBLOCKS
+//#define BLOCKS
+
+const int kMaxBounces = 50;
+
 vec3* m_fb;
 material* d_materials;
 camera d_camera;
@@ -22,7 +27,7 @@ int d_numUBlocks;
 uint3 d_center;
 
 // num traced rays
-__device__ uint64_t *d_numRays;
+uint64_t *d_numRays;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -67,7 +72,6 @@ __device__ bool hit_box(const vec3& center, float halfSize, const ray& r, float 
 }
 
 __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &center, float t_min, float t_max, hit_record& rec) {
-    const int coordRes = 128;
     const int blockRes = 32;
     const int ublockRes = 8;
 
@@ -88,6 +92,13 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
             (float)(ux)*16 + 7.5 - center.x,
             (float)(uy)*16 + 7.5,
             (float)(uz)*16 + 7.5 - center.z);
+#ifdef UBLOCKS
+        if (hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec)) {
+            hit_anything = true;
+            closest_so_far = temp_rec.t;
+            rec = temp_rec;
+        }
+#else
         if (!hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec))
             continue;
 
@@ -100,6 +111,13 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
             int by = ((b.coords >> 5) % blockRes) << 2;
             int bz = ((b.coords >> 10) % blockRes) << 2;
 
+#ifdef BLOCKS
+            if (hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec)) {
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
+#else
             if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec))
                 continue;
 
@@ -124,7 +142,9 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
                     }
                 }
             }
+#endif // BLOCKS
         }
+#endif // UBLOCKS
     }
 
     // we only have a single material for now
@@ -140,7 +160,7 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
 __device__ vec3 color(const ray& r, int numUBlocks, int numBlocks, const uint3& center, material* materials, rand_state& state, uint64_t *numRays) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < kMaxBounces; i++) {
         atomicAdd(numRays, 1);
 
         hit_record rec;
