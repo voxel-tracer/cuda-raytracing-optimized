@@ -157,38 +157,6 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
     return hit_anything;
 }
 
-// Matching the C++ code would recurse enough into color() calls that
-// it was blowing up the stack, so we have to turn this into a
-// limited-depth loop instead.  Later code in the book limits to a max
-// depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, const RenderContext &context, rand_state& state) {
-    ray cur_ray = r;
-    vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
-    for (int i = 0; i < kMaxBounces; i++) {
-        atomicAdd(context.numRays, 1);
-
-        hit_record rec;
-        if (hit(cur_ray, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
-            ray scattered;
-            vec3 attenuation;
-            if (scatter(context.materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
-                cur_attenuation *= attenuation;
-                cur_ray = scattered;
-            }
-            else {
-                return vec3(0.0, 0.0, 0.0);
-            }
-        }
-        else {
-            vec3 unit_direction = unit_vector(cur_ray.direction());
-            float t = 0.5f * (unit_direction.y() + 1.0f);
-            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-            return cur_attenuation * c;
-        }
-    }
-    return vec3(0.0, 0.0, 0.0); // exceeded recursion
-}
-
 __global__ void render(const RenderContext context, const camera cam) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -197,12 +165,53 @@ __global__ void render(const RenderContext context, const camera cam) {
     rand_state state = (wang_hash(pixel_index) * 336343633) | 1;
 
     vec3 col(0, 0, 0);
-    for (int s = 0; s < context.ns; s++) {
-        float u = float(i + rnd(state)) / float(context.max_x);
-        float v = float(j + rnd(state)) / float(context.max_y);
-        ray r = get_ray(cam, u, v, state);
-        col += color(r, context, state);
+    vec3 attenuation;
+    bool done = true;
+    int sample = 0;
+    int bounce = 0;
+    ray r;
+
+    while (sample < context.ns) {
+        if (done) { 
+            // generate a new ray
+            float u = float(i + rnd(state)) / float(context.max_x);
+            float v = float(j + rnd(state)) / float(context.max_y);
+            r = get_ray(cam, u, v, state);
+            // reset state
+            done = false;
+            bounce = 1; // start from one because of the way we check this
+            attenuation = vec3(1, 1, 1);
+        }
+
+        atomicAdd(context.numRays, 1);
+
+        hit_record rec;
+        if (hit(r, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
+            ray scattered;
+            vec3 a;
+            if (bounce < kMaxBounces && scatter(context.materials[rec.hitIdx], r, rec, a, scattered, state)) {
+                attenuation *= a;
+                r = scattered;
+            }
+            else {
+                // don't update color as attenuation is zero
+                done = true;
+            }
+        }
+        else {
+            vec3 unit_direction = unit_vector(r.direction());
+            float t = 0.5f * (unit_direction.y() + 1.0f);
+            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+            col +=  attenuation * c;
+            done = true;
+        }
+
+        if (done)
+            sample++;
+        else
+            bounce++;
     }
+
     col /= float(context.ns);
     col[0] = sqrt(col[0]);
     col[1] = sqrt(col[1]);
