@@ -3,6 +3,8 @@
 #include <float.h>
 #include <fstream>
 
+//#define CAM_NORMAL
+#define CAM_CLOSE
 
 // Required to include vec3.h
 #include <cuda_runtime.h>
@@ -20,12 +22,21 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny) {
-    // normal camera
+#ifdef CAM_NORMAL
     vec3 lookfrom(100, 150, 300);
     vec3 lookat(25, 35, 0);
+#else
+#ifdef CAM_CLOSE
     // zoomed so that all pixels hit the model
-    //vec3 lookfrom(110, 90, 75);
-    //vec3 lookat(25, 35, 0);
+    vec3 lookfrom(110, 90, 75);
+    vec3 lookat(25, 35, 0);
+#else
+    // original camera
+    vec3 lookfrom(256, 200, 256);
+    vec3 lookat(0, 0, 0);
+#endif
+#endif
+
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
