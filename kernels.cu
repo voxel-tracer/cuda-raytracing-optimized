@@ -7,6 +7,13 @@
 #include "sphere.h"
 #include "material.h"
 
+//#define METRIC
+
+#ifdef METRIC
+#include <cooperative_groups.h>
+using namespace cooperative_groups;
+#endif
+
 //#define UBLOCKS
 //#define BLOCKS
 
@@ -22,6 +29,9 @@ struct RenderContext {
     int numBlocks;
     uint3 center;
     uint64_t* numRays;
+#ifdef METRIC
+    uint64_t* metric;
+#endif
 };
 
 RenderContext context;
@@ -184,7 +194,11 @@ __global__ void render(const RenderContext context, const camera cam) {
         }
 
         atomicAdd(context.numRays, 1);
-
+#ifdef METRIC
+        auto g = coalesced_threads();
+        if (g.thread_rank() == 0)
+            atomicAdd(context.metric + (g.size() - 1), 1);
+#endif
         hit_record rec;
         if (hit(r, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
             ray scattered;
@@ -226,7 +240,10 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
 
     checkCudaErrors(cudaMallocManaged((void**)&context.fb, fb_size));
     *fb = context.fb;
-
+#ifdef METRIC
+    checkCudaErrors(cudaMallocManaged((void**)&context.metric, 32 * sizeof(uint64_t)));
+    for (auto i = 0; i < 32; i++) context.metric[i] = 0;
+#endif
     checkCudaErrors(cudaMalloc((void**)&context.materials, sizeof(material)));
     checkCudaErrors(cudaMemcpy(context.materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
 
@@ -259,6 +276,16 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     uint64_t numRays = 0;
     checkCudaErrors(cudaMemcpy((void*)&numRays, context.numRays, sizeof(uint64_t), cudaMemcpyDeviceToHost));
     std::cerr << "total rays traced = " << numRays << std::endl;
+#ifdef METRIC
+    // first count total
+    uint64_t total = 0;
+    for (auto i = 0; i < 32; i++) total += context.metric[i];
+    // then print for each bucket ratio of warps
+    std::cerr << "divergence metric: " << std::endl;
+    for (auto i = 0; i < 32; i++) {
+        std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.metric[i] * 100.0 / total) << std::endl;
+    }
+#endif
 }
 
 extern "C" void
