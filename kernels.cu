@@ -7,12 +7,10 @@
 #include "sphere.h"
 #include "material.h"
 
-//#define METRIC
-
-#ifdef METRIC
 #include <cooperative_groups.h>
 using namespace cooperative_groups;
-#endif
+
+#define METRIC
 
 #define DYNAMIC_FETCH_THRESHOLD 16
 
@@ -169,6 +167,16 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
     return hit_anything;
 }
 
+#ifdef METRIC
+__device__ void mark(const RenderContext context) {
+    auto g = coalesced_threads();
+    if (g.thread_rank() == 0)
+        atomicAdd(context.metric + (g.size() - 1), 1);
+}
+#else
+__device__ void mark(const RenderContext context) {}
+#endif
+
 __global__ void render(const RenderContext context, const camera cam) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -199,15 +207,11 @@ __global__ void render(const RenderContext context, const camera cam) {
             sample++;
         }
 
-#ifdef METRIC
-        auto g = coalesced_threads();
-        if (g.thread_rank() == 0)
-            atomicAdd(context.metric + (g.size() - 1), 1);
-#endif
 
         while (true) {
             if (!done) {
                 atomicAdd(context.numRays, 1);
+                mark(context);
 
                 hit_record rec;
                 if (hit(r, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
@@ -236,7 +240,7 @@ __global__ void render(const RenderContext context, const camera cam) {
             }
 
             // some lane may have exited the traversal loop, if not enough threads remain exit as well
-            if (__popc(__activemask()) < DYNAMIC_FETCH_THRESHOLD)
+            if (coalesced_threads().size() < DYNAMIC_FETCH_THRESHOLD)
                 break;
         }
     }
@@ -296,7 +300,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     uint64_t total = 0;
     for (auto i = 0; i < 32; i++) total += context.metric[i];
     // then print for each bucket ratio of warps
-    std::cerr << "divergence metric: " << std::endl;
+    std::cerr << "divergence metric: total = " << total << std::endl;
     for (auto i = 0; i < 32; i++) {
         std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.metric[i] * 100.0 / total) << std::endl;
     }
