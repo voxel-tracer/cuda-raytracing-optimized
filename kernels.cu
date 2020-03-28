@@ -7,6 +7,13 @@
 #include "sphere.h"
 #include "material.h"
 
+#define METRIC
+
+#ifdef METRIC
+#include <cooperative_groups.h>
+using namespace cooperative_groups;
+#endif
+
 //#define UBLOCKS
 //#define BLOCKS
 
@@ -22,6 +29,9 @@ struct RenderContext {
     int numBlocks;
     uint3 center;
     uint64_t* numRays;
+#ifdef METRIC
+    uint64_t* metric;
+#endif
 };
 
 RenderContext context;
@@ -166,7 +176,6 @@ __device__ vec3 color(const ray& r, const RenderContext &context, rand_state& st
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < kMaxBounces; i++) {
         atomicAdd(context.numRays, 1);
-
         hit_record rec;
         if (hit(cur_ray, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
             ray scattered;
@@ -180,6 +189,11 @@ __device__ vec3 color(const ray& r, const RenderContext &context, rand_state& st
             }
         }
         else {
+#ifdef METRIC
+            auto g = coalesced_threads();
+            if (g.thread_rank() == 0)
+                atomicAdd(context.metric + (g.size() - 1), 1);
+#endif
             vec3 unit_direction = unit_vector(cur_ray.direction());
             float t = 0.5f * (unit_direction.y() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
@@ -217,7 +231,10 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
 
     checkCudaErrors(cudaMallocManaged((void**)&context.fb, fb_size));
     *fb = context.fb;
-
+#ifdef METRIC
+    checkCudaErrors(cudaMallocManaged((void**)&context.metric, 32 * sizeof(uint64_t)));
+    for (auto i = 0; i < 32; i++) context.metric[i] = 0;
+#endif
     checkCudaErrors(cudaMalloc((void**)&context.materials, sizeof(material)));
     checkCudaErrors(cudaMemcpy(context.materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
 
@@ -228,8 +245,8 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     context.numUBlocks = model.numUBlocks;
     checkCudaErrors(cudaMemcpyToSymbol(d_ublocks, model.ublocks, model.numUBlocks * sizeof(block)));
 
-    checkCudaErrors(cudaMalloc((void**)&context.numRays, sizeof(uint64_t)));
-    checkCudaErrors(cudaMemset(context.numRays, 0, sizeof(uint64_t)));
+    checkCudaErrors(cudaMallocManaged((void**)&context.numRays, sizeof(uint64_t)));
+    context.numRays[0] = 0;
 
     d_camera = cam;
 }
@@ -247,9 +264,17 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 
-    uint64_t numRays = 0;
-    checkCudaErrors(cudaMemcpy((void*)&numRays, context.numRays, sizeof(uint64_t), cudaMemcpyDeviceToHost));
-    std::cerr << "total rays traced = " << numRays << std::endl;
+    std::cerr << "total rays traced = " << context.numRays[0] << std::endl;
+#ifdef METRIC
+    // first count total
+    uint64_t total = 0;
+    for (auto i = 0; i < 32; i++) total += context.metric[i];
+    // then print for each bucket ratio of warps
+    std::cerr << "divergence metric, Total = "<< total << std::endl;
+    for (auto i = 0; i < 32; i++) {
+        std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.metric[i] * 100.0 / total) << std::endl;
+    }
+#endif
 }
 
 extern "C" void
@@ -257,7 +282,6 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(context.materials));
     checkCudaErrors(cudaFree(context.fb));
-    checkCudaErrors(cudaFree(context.numRays));
 
     cudaDeviceReset();
 }
