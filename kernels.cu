@@ -14,6 +14,8 @@
 using namespace cooperative_groups;
 #endif
 
+#define DYNAMIC_FETCH_THRESHOLD 16
+
 //#define UBLOCKS
 //#define BLOCKS
 
@@ -181,8 +183,11 @@ __global__ void render(const RenderContext context, const camera cam) {
     int bounce = 0;
     ray r;
 
-    while (sample < context.ns) {
-        if (done) { 
+    while (true) {
+        if (done) {
+            if (sample == context.ns)
+                break;
+
             // generate a new ray
             float u = float(i + rnd(state)) / float(context.max_x);
             float v = float(j + rnd(state)) / float(context.max_y);
@@ -191,39 +196,49 @@ __global__ void render(const RenderContext context, const camera cam) {
             done = false;
             bounce = 1; // start from one because of the way we check this
             attenuation = vec3(1, 1, 1);
+            sample++;
         }
 
-        atomicAdd(context.numRays, 1);
 #ifdef METRIC
         auto g = coalesced_threads();
         if (g.thread_rank() == 0)
             atomicAdd(context.metric + (g.size() - 1), 1);
 #endif
-        hit_record rec;
-        if (hit(r, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
-            ray scattered;
-            vec3 a;
-            if (bounce < kMaxBounces && scatter(context.materials[rec.hitIdx], r, rec, a, scattered, state)) {
-                attenuation *= a;
-                r = scattered;
-            }
-            else {
-                // don't update color as attenuation is zero
-                done = true;
-            }
-        }
-        else {
-            vec3 unit_direction = unit_vector(r.direction());
-            float t = 0.5f * (unit_direction.y() + 1.0f);
-            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-            col +=  attenuation * c;
-            done = true;
-        }
 
-        if (done)
-            sample++;
-        else
-            bounce++;
+        while (true) {
+            if (!done) {
+                atomicAdd(context.numRays, 1);
+
+                hit_record rec;
+                if (hit(r, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
+                    ray scattered;
+                    vec3 a;
+                    if (bounce < kMaxBounces && scatter(context.materials[rec.hitIdx], r, rec, a, scattered, state)) {
+                        attenuation *= a;
+                        r = scattered;
+                    }
+                    else {
+                        // don't update color as attenuation is zero
+                        done = true;
+                    }
+                }
+                else {
+                    vec3 unit_direction = unit_vector(r.direction());
+                    float t = 0.5f * (unit_direction.y() + 1.0f);
+                    vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+                    col += attenuation * c;
+                    done = true;
+                }
+
+                bounce++;
+                if (done)
+                    break;
+            }
+
+            // some lane may have exited the traversal loop, if not enough threads remain exit as well
+            if (__popc(__activemask()) < DYNAMIC_FETCH_THRESHOLD)
+                break;
+        }
     }
 
     col /= float(context.ns);
