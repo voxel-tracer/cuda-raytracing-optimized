@@ -31,6 +31,14 @@ struct RenderContext {
     uint64_t* numRays;
 #ifdef METRIC
     uint64_t* metric;
+
+    __device__ void mark() const {
+        auto g = coalesced_threads();
+        if (g.thread_rank() == 0)
+            atomicAdd(metric + (g.size() - 1), 1);
+    }
+#else
+    __device__ void mark() {}
 #endif
 };
 
@@ -85,7 +93,7 @@ __device__ bool hit_box(const vec3& center, float halfSize, const ray& r, float 
     return true;
 }
 
-__device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &center, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit(const ray& r, const RenderContext &context, float t_min, float t_max, hit_record& rec, bool collectMetric) {
     const int blockRes = 32;
     const int ublockRes = 8;
 
@@ -94,7 +102,7 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
     float closest_so_far = t_max;
 
     // loop through all ublocks
-    for (int ui = 0; ui < numUBlocks; ui++) {
+    for (int ui = 0; ui < context.numUBlocks; ui++) {
         const block& u = d_ublocks[ui];
         // decode ublock coordinates at 8^3 resolution
         int ux = (u.coords % ublockRes);
@@ -103,9 +111,9 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
 
         // compute ublock center at 128^3, voxel, resolution
         const vec3 ucenter(
-            (float)(ux)*16 + 7.5 - center.x,
+            (float)(ux)*16 + 7.5 - context.center.x,
             (float)(uy)*16 + 7.5,
-            (float)(uz)*16 + 7.5 - center.z);
+            (float)(uz)*16 + 7.5 - context.center.z);
 #ifdef UBLOCKS
         if (hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec)) {
             hit_anything = true;
@@ -115,7 +123,6 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
 #else
         if (!hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec))
             continue;
-
         const int lastBlockIdx = u.idx + __popcll(u.voxels); // count number of active blocks in current ublock
         // loop through all blocks
         for (int bi = u.idx; bi < lastBlockIdx; bi++) {
@@ -132,7 +139,7 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
                 rec = temp_rec;
             }
 #else
-            if (!hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec))
+            if (!hit_box(vec3(((float)bx - context.center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - context.center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec))
                 continue;
 
             // loop through all voxels and identify the ones that are set
@@ -143,9 +150,10 @@ __device__ bool hit(const ray& r, int numUBlocks, int numBlocks, const uint3 &ce
                         int voxelBitIdx = xi + (yi << 2) + (zi << 4);
                         if (b.voxels & (1ULL << voxelBitIdx)) {
                             // compute voxel coordinates, centering the model around the origin
-                            int x = bx + xi - center.x;
+                            int x = bx + xi - context.center.x;
                             int y = by + yi;
-                            int z = bz + zi - center.z;
+                            int z = bz + zi - context.center.z;
+                            if (collectMetric) context.mark();
 
                             if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
                                 hit_anything = true;
@@ -177,7 +185,7 @@ __device__ vec3 color(const ray& r, const RenderContext &context, rand_state& st
     for (int i = 0; i < kMaxBounces; i++) {
         atomicAdd(context.numRays, 1);
         hit_record rec;
-        if (hit(cur_ray, context.numUBlocks, context.numBlocks, context.center, 0.001f, FLT_MAX, rec)) {
+        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, i > 0)) {
             ray scattered;
             vec3 attenuation;
             if (scatter(context.materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
@@ -189,11 +197,6 @@ __device__ vec3 color(const ray& r, const RenderContext &context, rand_state& st
             }
         }
         else {
-#ifdef METRIC
-            auto g = coalesced_threads();
-            if (g.thread_rank() == 0)
-                atomicAdd(context.metric + (g.size() - 1), 1);
-#endif
             vec3 unit_direction = unit_vector(cur_ray.direction());
             float t = 0.5f * (unit_direction.y() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
