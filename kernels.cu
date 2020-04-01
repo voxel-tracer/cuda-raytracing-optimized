@@ -254,7 +254,7 @@ __global__ void render(const RenderContext context, const camera cam) {
 }
 
 extern "C" void
-initRenderer(const voxelModel &model, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const voxelModel &model, material* h_materials, const camera cam, vec3 **fb, int nx, int ny, uint64_t **metric) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -264,6 +264,8 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     checkCudaErrors(cudaMallocManaged((void**)&context.metric, 32 * sizeof(uint64_t)));
     for (auto i = 0; i < 32; i++) context.metric[i] = 0;
 #endif
+    *metric = context.metric;
+
     checkCudaErrors(cudaMalloc((void**)&context.materials, sizeof(material)));
     checkCudaErrors(cudaMemcpy(context.materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
 

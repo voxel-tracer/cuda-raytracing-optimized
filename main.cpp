@@ -10,7 +10,7 @@
 #include <cuda_runtime.h>
 #include "helper_structs.h"
 
-extern "C" void initRenderer(const voxelModel &model, material* h_materials, camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(const voxelModel & model, material * h_materials, camera cam, vec3 * *fb, int nx, int ny, uint64_t * *metric);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
@@ -132,12 +132,13 @@ int main() {
 
     // init
     vec3 *fb;
+    uint64_t* metric;
     {
         voxelModel model;
         material* materials;
         loadFromVxt(input, model, &materials);
         camera cam = setup_camera(nx, ny);
-        initRenderer(model, materials, cam, &fb, nx, ny);
+        initRenderer(model, materials, cam, &fb, nx, ny, &metric);
         delete[] model.blocks;
         delete[] model.ublocks;
         delete[] materials;
@@ -152,14 +153,31 @@ int main() {
 
     if (!perf) {
         // Output FB as Image
+        const int metricX = 10;
+        const int metricY = 10;
+        // compute total metric
+        uint64_t total = 0;
+        for (int i = 0; i < 32; i++) total += metric[i];
+        
         std::cout << "P3\n" << nx << " " << ny << "\n255\n";
-        for (int j = ny - 1; j >= 0; j--) {
-            for (int i = 0; i < nx; i++) {
-                size_t pixel_index = j * nx + i;
-                int ir = int(255.99 * fb[pixel_index].r());
-                int ig = int(255.99 * fb[pixel_index].g());
-                int ib = int(255.99 * fb[pixel_index].b());
-                std::cout << ir << " " << ig << " " << ib << "\n";
+        for (int y = ny - 1; y >= 0; y--) {
+            for (int x = 0; x < nx; x++) {
+                if (y >= metricY && y < metricY + 100 && x >= metricX && x < (metricX + 32 * 5)) {
+                    int bucket = (x - metricX) / 5;
+                    int height = y - metricY + 1; // no need to draw 0 value
+                    int value = (metric[bucket] * 100.0 / total);
+                    if (height <= value)
+                        std::cout << "255 0 0\n";
+                    else
+                        std::cout << "128 128 128\n";
+                }
+                else {
+                    size_t pixel_index = y * nx + x;
+                    int ir = int(255.99 * fb[pixel_index].r());
+                    int ig = int(255.99 * fb[pixel_index].g());
+                    int ib = int(255.99 * fb[pixel_index].b());
+                    std::cout << ir << " " << ig << " " << ib << "\n";
+                }
             }
         }
     }
