@@ -30,15 +30,15 @@ struct RenderContext {
     uint3 center;
     uint64_t* numRays;
 #ifdef METRIC
-    uint64_t* metric;
+    uint64_t* divergence;
 
     __device__ void mark() const {
         auto g = coalesced_threads();
         if (g.thread_rank() == 0)
-            atomicAdd(metric + (g.size() - 1), 1);
+            atomicAdd(divergence + (g.size() - 1), 1);
     }
 #else
-    __device__ void mark() {}
+    __device__ void mark() const {}
 #endif
 };
 
@@ -235,8 +235,8 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     checkCudaErrors(cudaMallocManaged((void**)&context.fb, fb_size));
     *fb = context.fb;
 #ifdef METRIC
-    checkCudaErrors(cudaMallocManaged((void**)&context.metric, 32 * sizeof(uint64_t)));
-    for (auto i = 0; i < 32; i++) context.metric[i] = 0;
+    checkCudaErrors(cudaMallocManaged((void**)&context.divergence, 32 * sizeof(uint64_t)));
+    for (auto i = 0; i < 32; i++) context.divergence[i] = 0;
 #endif
     checkCudaErrors(cudaMalloc((void**)&context.materials, sizeof(material)));
     checkCudaErrors(cudaMemcpy(context.materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
@@ -271,11 +271,11 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
 #ifdef METRIC
     // first count total
     uint64_t total = 0;
-    for (auto i = 0; i < 32; i++) total += context.metric[i];
+    for (auto i = 0; i < 32; i++) total += context.divergence[i];
     // then print for each bucket ratio of warps
     std::cerr << "divergence metric, Total = "<< total << std::endl;
     for (auto i = 0; i < 32; i++) {
-        std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.metric[i] * 100.0 / total) << std::endl;
+        std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.divergence[i] * 100.0 / total) << std::endl;
     }
 #endif
 }
