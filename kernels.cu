@@ -7,7 +7,7 @@
 #include "sphere.h"
 #include "material.h"
 
-#define METRIC
+//#define METRIC
 
 #ifdef METRIC
 #include <cooperative_groups.h>
@@ -38,7 +38,7 @@ struct RenderContext {
             atomicAdd(metric + (g.size() - 1), 1);
     }
 #else
-    __device__ void mark() {}
+    __device__ void mark() const {}
 #endif
 };
 
@@ -143,25 +143,27 @@ __device__ bool hit(const ray& r, const RenderContext &context, float t_min, flo
                 continue;
 
             // loop through all voxels and identify the ones that are set
-            for (int xi = 0; xi < 4; xi++) {
-                for (int yi = 0; yi < 4; yi++) {
-                    for (int zi = 0; zi < 4; zi++) {
-                        // compute voxel bit idx
-                        int voxelBitIdx = xi + (yi << 2) + (zi << 4);
-                        if (b.voxels & (1ULL << voxelBitIdx)) {
-                            // compute voxel coordinates, centering the model around the origin
-                            int x = bx + xi - context.center.x;
-                            int y = by + yi;
-                            int z = bz + zi - context.center.z;
-                            if (collectMetric) context.mark();
+            uint64_t voxels = b.voxels;
+            for (uint8_t bitIdx = 0; bitIdx < 64; bitIdx++, voxels = voxels >> 1) {
+                if (!(voxels & 1)) continue;
 
-                            if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
-                                hit_anything = true;
-                                closest_so_far = temp_rec.t;
-                                rec = temp_rec;
-                            }
-                        }
-                    }
+                // b.voxels[bitIdx] is set
+
+                // compute relative voxel coordinate in block
+                int xi = bitIdx & 3;
+                int yi = (bitIdx >> 2) & 3;
+                int zi = (bitIdx >> 4) & 3;
+
+                // compute voxel coordinates, centering the model around the origin
+                int x = bx + xi - context.center.x;
+                int y = by + yi;
+                int z = bz + zi - context.center.z;
+                if (collectMetric) context.mark();
+
+                if (hit_box(vec3(x, y, z) * 2, 1, r, t_min, closest_so_far, temp_rec)) {
+                    hit_anything = true;
+                    closest_so_far = temp_rec.t;
+                    rec = temp_rec;
                 }
             }
 #endif // BLOCKS
