@@ -7,7 +7,7 @@
 #include "sphere.h"
 #include "material.h"
 
-#define METRIC
+//#define METRIC
 
 #ifdef METRIC
 #include <cooperative_groups.h>
@@ -101,7 +101,12 @@ __device__ bool hit(const ray& r, const RenderContext &context, float t_min, flo
     bool hit_anything = false;
     float closest_so_far = t_max;
 
-    // loop through all ublocks
+    uint8_t uhits[24];
+    uint8_t numUhits = 0;
+
+    uint8_t bhits[12];
+
+    // loop through all ublocks and keep track of intersected ublocks indices
     for (int ui = 0; ui < context.numUBlocks; ui++) {
         const block& u = d_ublocks[ui];
         // decode ublock coordinates at 8^3 resolution
@@ -111,36 +116,46 @@ __device__ bool hit(const ray& r, const RenderContext &context, float t_min, flo
 
         // compute ublock center at 128^3, voxel, resolution
         const vec3 ucenter(
-            (float)(ux)*16 + 7.5 - context.center.x,
-            (float)(uy)*16 + 7.5,
-            (float)(uz)*16 + 7.5 - context.center.z);
-#ifdef UBLOCKS
+            (float)(ux) * 16 + 7.5 - context.center.x,
+            (float)(uy) * 16 + 7.5,
+            (float)(uz) * 16 + 7.5 - context.center.z);
         if (hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec)) {
-            hit_anything = true;
-            closest_so_far = temp_rec.t;
-            rec = temp_rec;
+            uhits[numUhits++] = ui;
         }
-#else
-        if (!hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec))
-            continue;
-        const int lastBlockIdx = u.idx + __popcll(u.voxels); // count number of active blocks in current ublock
-        // loop through all blocks
-        for (int bi = u.idx; bi < lastBlockIdx; bi++) {
-            const block& b = d_blocks[bi];
+    }
+
+    // now go through all intersected ublocks and intersect their blocks
+    for (auto i = 0; i < numUhits; i++) {
+        uint8_t numBhits = 0;
+
+        const block& u = d_ublocks[uhits[i]];
+        const int numBlocks = __popcll(u.voxels);
+
+        // loop through all blocks and store indices of intersected blocks in bhits
+        for (int bi = 0; bi < numBlocks; bi++) {
+            const block& b = d_blocks[u.idx + bi];
             // decode block coordinates
             int bx = (b.coords % blockRes) << 2;
             int by = ((b.coords >> 5) % blockRes) << 2;
             int bz = ((b.coords >> 10) % blockRes) << 2;
 
-#ifdef BLOCKS
-            if (hit_box(vec3(((float)bx - center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec)) {
-                hit_anything = true;
-                closest_so_far = temp_rec.t;
-                rec = temp_rec;
-            }
-#else
-            if (!hit_box(vec3(((float)bx - context.center.x + 1.5f) * 2, (by + 1.5f) * 2, ((float)bz - context.center.z + 1.5f) * 2), 4, r, t_min, closest_so_far, temp_rec))
-                continue;
+            const vec3 bcenter(
+                ((float)bx - context.center.x + 1.5f) * 2, 
+                (by + 1.5f) * 2, 
+                ((float)bz - context.center.z + 1.5f) * 2
+            );
+
+            if (hit_box(bcenter, 4, r, t_min, closest_so_far, temp_rec))
+                bhits[numBhits++] = bi;
+        }
+
+        // now go through all intersected blocks and intersect their vertices
+        for (auto j = 0; j < numBhits; j++) {
+            const block& b = d_blocks[u.idx + bhits[j]];
+            // decode block coordinates
+            int bx = (b.coords % blockRes) << 2;
+            int by = ((b.coords >> 5) % blockRes) << 2;
+            int bz = ((b.coords >> 10) % blockRes) << 2;
 
             // loop through all voxels and identify the ones that are set
             for (int xi = 0; xi < 4; xi++) {
@@ -164,9 +179,7 @@ __device__ bool hit(const ray& r, const RenderContext &context, float t_min, flo
                     }
                 }
             }
-#endif // BLOCKS
         }
-#endif // UBLOCKS
     }
 
     // we only have a single material for now
