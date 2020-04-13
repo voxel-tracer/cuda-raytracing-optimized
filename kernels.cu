@@ -10,9 +10,9 @@
 #include <cooperative_groups.h>
 using namespace cooperative_groups;
 
-//#define METRIC
+#define METRIC
 
-#define DYNAMIC_FETCH_THRESHOLD 16
+#define DYNAMIC_FETCH_THRESHOLD 32
 
 //#define UBLOCKS
 //#define BLOCKS
@@ -31,6 +31,7 @@ struct RenderContext {
     uint64_t* numRays;
 #ifdef METRIC
     uint64_t* divergence;
+    uint64_t* numUHitsDiff;
 #endif
 
 #ifdef METRIC
@@ -39,8 +40,21 @@ struct RenderContext {
         if (g.thread_rank() == 0)
             atomicAdd(divergence + (g.size() - 1), 1);
     }
+
+    __device__ void numUhits(uint8_t value) const {
+        int vmin = value;
+        int vmax = value;
+        auto g = coalesced_threads();
+        for (auto offset = 16; offset > 0; offset /= 2) {
+            vmin = min(vmin, g.shfl_down(vmin, offset));
+            vmax = max(vmax, g.shfl_down(vmax, offset));
+        }
+        if (g.thread_rank() == 0)
+            atomicAdd(numUHitsDiff + (vmax - vmin), 1);
+    }
 #else
     __device__ void mark() const {}
+    __device__ void numUhits(uint8_t value) const {}
 #endif
 
 };
@@ -124,8 +138,10 @@ __device__ bool hit(const ray& r, const RenderContext& context, float t_min, flo
             (float)(uz) * 16 + 7.5 - context.center.z);
         if (hit_box(ucenter * 2, 16, r, t_min, closest_so_far, temp_rec)) {
             uhits[numUhits++] = ui;
+        }
     }
-}
+
+    context.numUhits(numUhits);
 
     // now go through all intersected ublocks and intersect their blocks
     for (auto i = 0; i < numUhits; i++) {
@@ -277,6 +293,9 @@ initRenderer(const voxelModel &model, material* h_materials, const camera cam, v
     checkCudaErrors(cudaMallocManaged((void**)&context.divergence, 32 * sizeof(uint64_t)));
     for (auto i = 0; i < 32; i++) context.divergence[i] = 0;
     *metric = context.divergence;
+
+    checkCudaErrors(cudaMallocManaged((void**)&context.numUHitsDiff, 24 * sizeof(uint64_t)));
+    for (auto i = 0; i < 24; i++) context.numUHitsDiff[i] = 0;
 #endif
 
     checkCudaErrors(cudaMalloc((void**)&context.materials, sizeof(material)));
@@ -314,11 +333,11 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
 #ifdef METRIC
     // first count total
     uint64_t total = 0;
-    for (auto i = 0; i < 32; i++) total += context.divergence[i];
+    for (auto i = 0; i < 24; i++) total += context.numUHitsDiff[i];
     // then print for each bucket ratio of warps
-    std::cerr << "divergence metric: total = " << total << std::endl;
-    for (auto i = 0; i < 32; i++) {
-        std::cerr << "\t" << (i + 1) << ":\t" << (int)(context.divergence[i] * 100.0 / total) << std::endl;
+    std::cerr << "num uhits diff: total = " << total << std::endl;
+    for (auto i = 0; i < 24; i++) {
+        std::cerr << "\t" << i << ":\t" << (int)(context.numUHitsDiff[i] * 100.0 / total) << std::endl;
     }
 #endif
 }
@@ -331,6 +350,7 @@ cleanupRenderer() {
     checkCudaErrors(cudaFree(context.numRays));
 #ifdef METRIC
     checkCudaErrors(cudaFree(context.divergence));
+    checkCudaErrors(cudaFree(context.numUHitsDiff));
 #endif
     cudaDeviceReset();
 }
