@@ -1,0 +1,55 @@
+POLYGON RENDERER (PHASE I)
+- one line summary
+  apply all the optimization techniques I learned so far to produce high quality renders really quickly
+  (this is the same work I've been doing for the past year but with great looking renders)
+- required features
+ . support large poly models, think sculptures (CGTrader)
+ . support a few interesting materials that produce great renders
+   (tinted glass, subsurface scattering, plastic)
+ .  basic lighting and background setup that produces great renders
+   (transparent bg with invisible plane that catches shadows and reflections)
+ . apply all the optimizations I learned so far along with any other optimization that may improve the
+   performance of the renderer (SAH BVH building, russian roulette, ...)
+
+PBR MATERIAL EDITOR (PHASE II)
+- one line summary
+  allow user to configure PBR materials and replace existing sculpture materials with those
+  producing incredible renders (think CGTrader Marvel/DC Comics renders) really fast
+
+---------------------------------------------------------------------------------------------------------
+PHASE I: POLYGON RENDERER
+---------------------------------------------------------------------------------------------------------
+ REQUIREMENTS
+ ------------
+- support large triangle mesh .obj models
+- support a few interesting materials that produce great renderers
+ . tinted glass with Beer-lambert model
+ . Peter Shirley's brute force subsurface scattering
+ . also see this answer that goes into a lot of details about SSS: https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
+ . existing plastic (diffuse + coat)
+- basic lighting and background setup that produces great renderers
+
+* at this point I should have great looking renderer that are too slow
+ . now I can start optimizing the renderer as much as possible
+ 
+* once the renderer is fast enough I can add support for an OpenGL viewer
+ . this will showcase how quickly can my renderer produce interesting images
+
+---------------------------------------------------------------------------------------------------------
+
+
+Ideal target is to finish PHASE I by end of Ramadan (5 weeks)
+
+PHASE I
+- extend my renderer to support polygon models
+- good light setup and transparent background
+- do not worry about optimization and focus on models that can fit in constant memory
+
+OTHER DELIVERABLES IN NO PARTICULAR ORDER
+- tinted glass material
+- support large polygon models
+- subsurface scattering (Peter Shirley Volume rendering)
+- raylib mesh viewer that supports rendering directly to the viewport
+ . we can start with render goes straight to disk
+- advanced materials: implement Disney BRDF and add UI to configure materials
+- allow setting different material per original model color

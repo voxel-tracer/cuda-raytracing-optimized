@@ -5,6 +5,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define TINYOBJLOADER_IMPLEMENTATION 
+#include <tiny_obj_loader.h>
+
 // Required to include vec3.h
 #include "helper_structs.h"
 
@@ -84,8 +87,59 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
+void loadObj() {
+    std::string inputfile = "D:\\models\\lowpoly\\panter.obj";
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    
+    std::string warn;
+    std::string err;
+
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, inputfile.c_str());
+
+    if (!warn.empty())
+        std::cerr << warn << std::endl;
+    if (!err.empty())
+        std::cerr << err << std::endl;
+
+    if (!ret)
+        return;
+
+    std::cerr << " num vertices " << attrib.vertices.size() << std::endl;
+    if (!materials.empty())
+        std::cerr << " materials size " << materials.size() << std::endl;
+    if (!attrib.texcoords.empty())
+        std::cerr << " texcoord size " << attrib.texcoords.size() << std::endl;
+    if (!attrib.colors.empty())
+        std::cerr << " colors size " << attrib.colors.size() << std::endl;
+
+    // loop over shapes
+    for (auto s = 0; s < shapes.size(); s++) {
+        // loop over faces
+        size_t index_offset = 0;
+        for (auto f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+            int fv = shapes[s].mesh.num_face_vertices[f];
+            if (fv != 3)
+                std::cerr << "face " << f << " of shape " << s << " has " << fv << " vertices" << std::endl;
+            
+            // loop over vertices in the face
+            for (auto v = 0; v < fv; v++) {
+                // access to vertex
+                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+                tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
+                tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
+                tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
+                tinyobj::real_t nx = attrib.normals[3 * idx.vertex_index + 0];
+                tinyobj::real_t ny = attrib.normals[3 * idx.vertex_index + 1];
+                tinyobj::real_t nz = attrib.normals[3 * idx.vertex_index + 2];
+            }
+            index_offset += fv;
+        }
+    }
+}
 int main() {
-    bool perf = false;
+    bool perf = true;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
     int ns = !perf ? 2048 : 1;
@@ -94,6 +148,8 @@ int main() {
 
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
+
+    loadObj();
 
     // init
     vec3 *fb;
