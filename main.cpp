@@ -24,14 +24,14 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny) {
-    vec3 lookfrom(150, 100, 100);
-    vec3 lookat(0, 0, 0);
+    vec3 lookfrom(100, -150, 100);
+    vec3 lookat(0, 0, 10);
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
         lookat,
         vec3(0, 0, 1),
-        30.0,
+        20.0,
         float(nx) / float(ny),
         aperture,
         dist_to_focus);
@@ -114,8 +114,8 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     *h_materials = new material[1];
     //*h_materials[0] = new_metal(vec3(0.7, 0.6, 0.5), 0);
     //*h_materials[0] = new_dielectric(1.5);
-    (*h_materials)[0] = new_lambertian(vec3(0.5, 0.5, 0.5));
-    //*h_materials[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    //(*h_materials)[0] = new_lambertian(vec3(0.5, 0.5, 0.5));
+    *h_materials[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
 
     return true;
 }
@@ -124,7 +124,7 @@ int main() {
     bool perf = false;
     int nx = !perf ? 1200 : 600;
     int ny = !perf ? 800 : 400;
-    int ns = !perf ? 1 : 1;
+    int ns = !perf ? 1024 : 1;
     int tx = 8;
     int ty = 8;
 
