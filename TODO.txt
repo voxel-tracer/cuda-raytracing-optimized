@@ -35,6 +35,28 @@ PHASE I: POLYGON RENDERER
 * once the renderer is fast enough I can add support for an OpenGL viewer
  . this will showcase how quickly can my renderer produce interesting images
 
+ TASKS
+ -----
+ - render obj model
+  . DONE load obj as triangle list
+  . copy triangles to constant memory
+    . constant mem size = 65536B, each triangle uses 3 vec3 = 3x3x float = 3x3x4B = 36B => we can store 1280 tris
+  . ray-triangle intersection with a single material
+- floor
+  . use 2 triangles to represent the floor
+  . make it big enough to catch any shadows
+  . use coat material
+- transparent background
+  . when ray hits sky it's value becomes transparent
+  . when ray hits floor and is scattered as diffuse it becomes transparent
+  . when ray hits floor and is scattered as specular 
+
+ IMPROVEMENTS
+ ------------
+- when importing a model, define its orientation (up vector) and make sure its loading
+  in the correct orientation. Makes it easier to use a standard camera position and orient
+  the environment map
+- camera distance is computed automatically such that the whole model is visible in the viewport
 ---------------------------------------------------------------------------------------------------------
 
 

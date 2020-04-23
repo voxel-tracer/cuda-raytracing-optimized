@@ -2,7 +2,7 @@
 #include "rnd.h"
 #include "vec3.h"
 #include "camera.h"
-#include "sphere.h"
+#include "triangle.h"
 #include "material.h"
 
 vec3* m_fb;
@@ -12,8 +12,10 @@ float* d_hdri = NULL;
 int hdri_x;
 int hdri_y;
 
-const int kNumHitable = 22 * 22 + 1 + 3;
-__device__ __constant__ sphere d_spheres[kNumHitable];
+const int kMaxTris = 1820;
+__device__ __constant__ vec3 d_triangles[kMaxTris * 3];
+
+uint16_t d_numTris;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -28,18 +30,19 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
+__device__ bool hit(const ray& r, uint16_t numTris, float t_min, float t_max, hit_record& rec) {
     hit_record temp_rec;
     bool hit_anything = false;
     float closest_so_far = t_max;
-    for (int i = 0; i < kNumHitable; i++) {
-        if (sphereHit(d_spheres[i], r, t_min, closest_so_far, temp_rec)) {
+    for (int i = 0; i < numTris; i++) {
+        if (triangleHit(d_triangles + i*3, r, t_min, closest_so_far, temp_rec)) {
             hit_anything = true;
             closest_so_far = temp_rec.t;
             rec = temp_rec;
             rec.hitIdx = i;
         }
     }
+    rec.hitIdx = 0;
     return hit_anything;
 }
 
@@ -47,12 +50,12 @@ __device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) {
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, material* materials, const float* hdri, rand_state& state) {
+__device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const float* hdri, rand_state& state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if (hit(cur_ray, 0.001f, FLT_MAX, rec)) {
+        if (hit(cur_ray, numTris, 0.001f, FLT_MAX, rec)) {
             ray scattered;
             vec3 attenuation;
             if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state)) {
@@ -77,7 +80,7 @@ __device__ vec3 color(const ray& r, material* materials, const float* hdri, rand
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam, material* materials, const float* hdri) {
+__global__ void render(vec3* fb, uint16_t numTris, int max_x, int max_y, int ns, const camera cam, material* materials, const float* hdri) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -89,7 +92,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
         float u = float(i + rnd(state)) / float(max_x);
         float v = float(j + rnd(state)) / float(max_y);
         ray r = get_ray(cam, u, v, state);
-        col += color(r, materials, hdri, state);
+        col += color(r, numTris, materials, hdri, state);
     }
     col /= float(ns);
     col[0] = sqrt(col[0]);
@@ -99,17 +102,19 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, const camera cam,
 }
 
 extern "C" void
-initRenderer(sphere* h_spheres, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
     checkCudaErrors(cudaMallocManaged((void**)&m_fb, fb_size));
     *fb = m_fb;
 
-    checkCudaErrors(cudaMalloc((void**)&d_materials, kNumHitable * sizeof(material)));
-    checkCudaErrors(cudaMemcpy(d_materials, h_materials, kNumHitable * sizeof(material), cudaMemcpyHostToDevice));
+    // all triangles share the same material
+    checkCudaErrors(cudaMalloc((void**)&d_materials, sizeof(material)));
+    checkCudaErrors(cudaMemcpy(d_materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
 
-    checkCudaErrors(cudaMemcpyToSymbol(d_spheres, h_spheres, kNumHitable * sizeof(sphere)));
+    checkCudaErrors(cudaMemcpyToSymbol(d_triangles, h_triangles, numTris * 3 * sizeof(vec3)));
+    d_numTris = numTris;
 
     d_camera = cam;
 }
@@ -125,7 +130,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, nx, ny, ns, d_camera, d_materials, d_hdri);
+    render <<<blocks, threads >>> (m_fb, d_numTris, nx, ny, ns, d_camera, d_materials, d_hdri);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
