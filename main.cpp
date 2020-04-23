@@ -11,7 +11,7 @@
 // Required to include vec3.h
 #include "helper_structs.h"
 
-extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, const camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, uint16_t numMats, const camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void initHDRi(float* data, int x, int y, int n);
 extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
@@ -48,7 +48,7 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
-bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials) {
+bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials, uint16_t &numMats, float floorHalfSize) {
 //    std::string inputfile = "D:\\models\\lowpoly\\panter.obj";
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -80,6 +80,7 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     for (auto s = 0; s < shapes.size(); s++) {
         numTris += shapes[s].mesh.num_face_vertices.size();
     }
+    numTris += 2; // to account for the floor
 
     // loop over shapes and copy all triangles to array
     *h_triangles = new vec3[numTris * 3];
@@ -108,14 +109,24 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
         }
     }
 
+    // add a floor at z = 0
+    (*h_triangles)[vec_index++] = vec3(1, -1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, 1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, -1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, -1, 0) * floorHalfSize;
+
     // create a single material for all triangles
     unsigned int rand_state = 0;
 
-    *h_materials = new material[1];
+    numMats = 2;
+    *h_materials = new material[numMats];
     //*h_materials[0] = new_metal(vec3(0.7, 0.6, 0.5), 0);
-    //*h_materials[0] = new_dielectric(1.5);
-    //(*h_materials)[0] = new_lambertian(vec3(0.5, 0.5, 0.5));
-    *h_materials[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    //(*h_materials)[0] = new_dielectric(1.5);
+    (*h_materials)[0] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
+    //(*h_materials)[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    (*h_materials)[1] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
 
     return true;
 }
@@ -137,7 +148,8 @@ int main() {
         vec3* triangles;
         material* materials;
         uint16_t numTris;
-        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials)) {
+        uint16_t numMats;
+        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials, numMats, 200)) {
             return -1;
         }
 
@@ -145,21 +157,23 @@ int main() {
 
         camera cam = setup_camera(nx, ny);
 
-        initRenderer(triangles, numTris, materials, cam, &fb, nx, ny);
+        initRenderer(triangles, numTris, materials, numMats, cam, &fb, nx, ny);
         delete[] triangles;
         delete[] materials;
 
         // load hdri
-        int x, y, n;
-        float* data = stbi_loadf("lebombo_1k.hdr", &x, &y, &n, 0);
-        float max = 0;
-        for (int i = 0; i < (x * y * n); i++) {
-            max = fmaxf(max, data[i]);
-        }
+        //{
+        //    int x, y, n;
+        //    float* data = stbi_loadf("lebombo_1k.hdr", &x, &y, &n, 0);
+        //    float max = 0;
+        //    for (int i = 0; i < (x * y * n); i++) {
+        //        max = fmaxf(max, data[i]);
+        //    }
 
-        std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
-        initHDRi(data, x, y, n);
-        stbi_image_free(data);
+        //    std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
+        //    initHDRi(data, x, y, n);
+        //    stbi_image_free(data);
+        //}
     }
 
     clock_t start, stop;

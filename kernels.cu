@@ -16,6 +16,7 @@ const int kMaxTris = 1820;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 
 uint16_t d_numTris;
+uint16_t d_numMats;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -42,7 +43,7 @@ __device__ bool hit(const ray& r, uint16_t numTris, float t_min, float t_max, hi
             rec.hitIdx = i;
         }
     }
-    rec.hitIdx = 0;
+    rec.hitIdx = rec.hitIdx < (numTris - 2) ? 0 : 1; // last 2 triangles is for the floor
     return hit_anything;
 }
 
@@ -84,7 +85,7 @@ __device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const
     return vec3(0.0, 0.0, 0.0); // exceeded recursion
 }
 
-__global__ void render(vec3* fb, uint16_t numTris, int max_x, int max_y, int ns, const camera cam, material* materials, const float* hdri) {
+__global__ void render(vec3* fb, uint16_t numTris, int max_x, int max_y, int ns, const camera cam, material* materials, uint16_t numMats, const float* hdri) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= max_x) || (j >= max_y)) return;
@@ -106,7 +107,7 @@ __global__ void render(vec3* fb, uint16_t numTris, int max_x, int max_y, int ns,
 }
 
 extern "C" void
-initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, const camera cam, vec3 **fb, int nx, int ny) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -114,8 +115,9 @@ initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, c
     *fb = m_fb;
 
     // all triangles share the same material
-    checkCudaErrors(cudaMalloc((void**)&d_materials, sizeof(material)));
-    checkCudaErrors(cudaMemcpy(d_materials, h_materials, sizeof(material), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&d_materials, numMats * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(d_materials, h_materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
+    d_numMats = numMats;
 
     checkCudaErrors(cudaMemcpyToSymbol(d_triangles, h_triangles, numTris * 3 * sizeof(vec3)));
     d_numTris = numTris;
@@ -134,7 +136,7 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
     // Render our buffer
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, d_numTris, nx, ny, ns, d_camera, d_materials, d_hdri);
+    render <<<blocks, threads >>> (m_fb, d_numTris, nx, ny, ns, d_camera, d_materials, d_numMats, d_hdri);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
