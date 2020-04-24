@@ -76,7 +76,7 @@ __device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const
             //    hdri[(coords.y * 1024 + coords.x)*3 + 2]
             //);
             //return cur_attenuation * c;
-            vec3 unit_direction = unit_vector(cur_ray.direction());
+            vec3 unit_direction = cur_ray.direction();
             float t = 0.5f * (unit_direction.z() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
             return cur_attenuation * c;

@@ -31,14 +31,14 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
 }
 
 __device__ bool scatter_lambertian(const vec3& albedo, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
-    vec3 target = rec.p + rec.normal + random_in_unit_sphere(state);
-    scattered = ray(rec.p, target - rec.p);
+    vec3 target = rec.normal + random_in_unit_sphere(state);
+    scattered = ray(rec.p, target);
     attenuation = albedo;
     return true;
 }
 
 __device__ bool scatter_metal(const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state) {
-    vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
+    vec3 reflected = reflect(r_in.direction(), rec.normal);
     scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
     attenuation = albedo;
     return (dot(scattered.direction(), rec.normal) > 0.0f);
@@ -55,13 +55,13 @@ __device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_rec
     if (dot(r_in.direction(), rec.normal) > 0.0f) {
         outward_normal = -rec.normal;
         ni_over_nt = ref_idx;
-        cosine = dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = dot(r_in.direction(), rec.normal);
         cosine = sqrt(1.0f - ref_idx * ref_idx * (1 - cosine * cosine));
     }
     else {
         outward_normal = rec.normal;
         ni_over_nt = 1.0f / ref_idx;
-        cosine = -dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = -dot(r_in.direction(), rec.normal);
     }
     if (refract(r_in.direction(), outward_normal, ni_over_nt, refracted))
         reflect_prob = schlick(cosine, ref_idx);
@@ -84,13 +84,13 @@ __device__ bool scatter_coat(const vec3& albedo, float ref_idx, const ray& r_in,
     if (dot(r_in.direction(), rec.normal) > 0.0f) {
         outward_normal = -rec.normal;
         ni_over_nt = ref_idx;
-        cosine = dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = dot(r_in.direction(), rec.normal);
         cosine = sqrt(1.0f - ref_idx * ref_idx * (1 - cosine * cosine));
     }
     else {
         outward_normal = rec.normal;
         ni_over_nt = 1.0f / ref_idx;
-        cosine = -dot(r_in.direction(), rec.normal) / r_in.direction().length();
+        cosine = -dot(r_in.direction(), rec.normal);
     }
     reflect_prob = schlick(cosine, ni_over_nt);
     if (rnd(state) < reflect_prob)
