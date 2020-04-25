@@ -117,12 +117,12 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     }
 
     // add a floor at z = 0
-    (*h_triangles)[vec_index++] = vec3(1, -1, -0.01) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, 1, -0.01) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.01) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, -1, -0.01) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.01) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, -1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, -1, -0.0001) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, 1, -0.0001) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.0001) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, -1, -0.0001) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.0001) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, -1, -0.0001) * floorHalfSize;
 
     // create a single material for all triangles
     unsigned int rand_state = 0;
@@ -133,22 +133,22 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     const vec3 floorColor1 = hexColor(0x511845);
     const vec3 floorColor2 = hexColor(0xff5733);
 
-    (*h_materials)[0] = new_dielectric(1);
+    //(*h_materials)[0] = new_dielectric(1);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
+    (*h_materials)[0] = new_coat(modelColor, 1.5f);
 
     //(*h_materials)[1] = new_lambertian(floorColor1);
-    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
+    (*h_materials)[1] = new_metal(floorColor1, 0.2);
     //(*h_materials)[1] = new_coat(floorColor1, 1.5f);
-    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
+    //(*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
 
     return true;
 }
 
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 1024) : 1;
