@@ -122,10 +122,13 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
 
     numMats = 2;
     *h_materials = new material[numMats];
-    //*h_materials[0] = new_metal(vec3(0.7, 0.6, 0.5), 0);
     //(*h_materials)[0] = new_dielectric(1.5);
-    (*h_materials)[0] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
-    //(*h_materials)[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    //(*h_materials)[0] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
+    //(*h_materials)[0] = new_metal(vec3(RND * RND, RND * RND, RND * RND), 0.2);
+    (*h_materials)[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+
+    //(*h_materials)[1] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
+    //(*h_materials)[1] = new_metal(vec3(RND * RND, RND * RND, RND * RND), 0.2);
     (*h_materials)[1] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
 
     return true;
