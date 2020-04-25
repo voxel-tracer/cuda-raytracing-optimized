@@ -19,3 +19,7 @@ material new_coat(vec3 albedo, float ref_idx) {
 material new_checker(vec3 albedo, vec3 albedo2, float frequency) {
     return material(CHECKER, albedo, albedo2, frequency);
 }
+
+material new_tintedGlass(vec3 absorptionColor, float absorptionDistance) {
+    return material(TINTED_GLASS, absorptionColor, vec3(), absorptionDistance);
+}
