@@ -111,6 +111,7 @@ __device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const
             }
         }
         else {
+            // environment map
             //vec3 dir = unit_vector(cur_ray.direction());
             //uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
             //vec3 c(
@@ -119,11 +120,17 @@ __device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const
             //    hdri[(coords.y * 1024 + coords.x)*3 + 2]
             //);
             //return cur_attenuation * c;
+
+            // sky color
             vec3 unit_direction = cur_ray.direction();
             float t = 0.5f * (unit_direction.z() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
             curColor += c * cur_attenuation;
             return curColor;
+
+            // uniform sky color
+            //curColor += cur_attenuation * .5f;
+            //return curColor;
         }
     }
     return curColor; // exceeded recursion

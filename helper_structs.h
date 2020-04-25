@@ -17,19 +17,22 @@ enum material_type
     LAMBERTIAN,
     DIELECTRIC,
     METAL,
-    COAT
+    COAT,
+    CHECKER
 };
 
 struct material 
 {
     material() {}
-    material(material_type t, vec3 a, float f): type(t), albedo(a), fuzz(f) {}
+    material(material_type t, vec3 a, vec3 b, float f): type(t), albedo(a), albedo2(b), fuzz(f) {}
 
     material_type type;
     vec3 albedo;
+    vec3 albedo2;
     union {
         float fuzz;
         float ref_idx;
+        float frequency;
     };
 };
 
@@ -37,6 +40,7 @@ material new_lambertian(vec3 albedo);
 material new_dielectric(float ref_idx);
 material new_metal(vec3 albedo, float fuzz);
 material new_coat(vec3 albedo, float ref_idx);
+material new_checker(vec3 albedo, vec3 albedo2, float frequency);
 
 struct camera
 {

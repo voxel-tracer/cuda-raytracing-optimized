@@ -48,6 +48,13 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
+vec3 hexColor(int hexValue) {
+    float r = ((hexValue >> 16) & 0xFF);
+    float g = ((hexValue >> 8) & 0xFF);
+    float b = ((hexValue) & 0xFF);
+    return vec3(r, g, b) / 255.0;
+}
+
 bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials, uint16_t &numMats, float floorHalfSize) {
 //    std::string inputfile = "D:\\models\\lowpoly\\panter.obj";
     tinyobj::attrib_t attrib;
@@ -110,35 +117,41 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     }
 
     // add a floor at z = 0
-    (*h_triangles)[vec_index++] = vec3(1, -1, 0) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, 1, 0) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, 0) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, -1, 0) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, 0) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, -1, 0) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, -1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, 1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(1, -1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.01) * floorHalfSize;
+    (*h_triangles)[vec_index++] = vec3(-1, -1, -0.01) * floorHalfSize;
 
     // create a single material for all triangles
     unsigned int rand_state = 0;
 
     numMats = 2;
     *h_materials = new material[numMats];
-    //(*h_materials)[0] = new_dielectric(1.5);
-    //(*h_materials)[0] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
-    //(*h_materials)[0] = new_metal(vec3(RND * RND, RND * RND, RND * RND), 0.2);
-    (*h_materials)[0] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    const vec3 modelColor(RND * RND, RND * RND, RND * RND);
+    const vec3 floorColor1 = hexColor(0x511845);
+    const vec3 floorColor2 = hexColor(0xff5733);
 
-    //(*h_materials)[1] = new_lambertian(vec3(RND * RND, RND * RND, RND * RND));
-    //(*h_materials)[1] = new_metal(vec3(RND * RND, RND * RND, RND * RND), 0.2);
-    (*h_materials)[1] = new_coat(vec3(RND * RND, RND * RND, RND * RND), 1.5f);
+    (*h_materials)[0] = new_dielectric(1);
+    //(*h_materials)[0] = new_lambertian(modelColor);
+    //(*h_materials)[0] = new_metal(modelColor, 0.2);
+    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
+
+    //(*h_materials)[1] = new_lambertian(floorColor1);
+    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
+    //(*h_materials)[1] = new_coat(floorColor1, 1.5f);
+    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
 
     return true;
 }
 
 int main() {
     bool perf = false;
-    int nx = !perf ? 1200 : 600;
-    int ny = !perf ? 800 : 400;
-    int ns = !perf ? 1024 : 1;
+    bool fast = true;
+    int nx = (!perf && !fast) ? 1200 : 600;
+    int ny = (!perf && !fast) ? 800 : 400;
+    int ns = !perf ? (fast ? 40 : 1024) : 1;
     int tx = 8;
     int ty = 8;
 

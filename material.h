@@ -38,6 +38,15 @@ __device__ bool scatter_lambertian(const vec3& albedo, const hit_record& rec, ve
     return true;
 }
 
+// simplified checker that assumes a plane with normal = (0, 0, 1)
+__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, const hit_record& hit, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
+    auto sines = sin(frequency * hit.p.x()) * sin(frequency * hit.p.y()) * sin(frequency * hit.p.z());
+    if (sines < 0)
+        return scatter_lambertian(albedo1, hit, attenuation, scattered, state, shadow);
+    else
+        return scatter_lambertian(albedo2, hit, attenuation, scattered, state, shadow);
+}
+
 __device__ bool scatter_metal(const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
     vec3 reflected = reflect(r_in.direction(), rec.normal);
     scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
@@ -115,6 +124,8 @@ __device__ bool scatter(const material& m, const ray& r_in, const hit_record& re
         return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state, shadow);
     case COAT:
         return scatter_coat(m.albedo, m.ref_idx, r_in, rec, attenuation, scattered, state, shadow);
+    case CHECKER:
+        return scatter_checker(m.albedo, m.albedo2, m.frequency, rec, attenuation, scattered, state, shadow);
     default:
         return false;
     }
