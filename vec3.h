@@ -94,6 +94,13 @@ __host__ __device__ inline vec3 cross(const vec3 &v1, const vec3 &v2) {
                 (v1.e[0]*v2.e[1] - v1.e[1]*v2.e[0]));
 }
 
+__host__ __device__ inline vec3 log(const vec3& v) {
+    return vec3(logf(v.x()), logf(v.y()), logf(v.z()));
+}
+
+__host__ __device__ inline vec3 exp(const vec3& v) {
+    return vec3(expf(v.x()), expf(v.y()), expf(v.z()));
+}
 
 __host__ __device__ inline vec3& vec3::operator+=(const vec3 &v){
     e[0]  += v.e[0];

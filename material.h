@@ -78,32 +78,61 @@ __device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_rec
 }
 
 __device__ bool scatter_coat(const vec3& albedo, float ref_idx, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    vec3 outward_normal;
-    vec3 reflected = reflect(r_in.direction(), rec.normal);
-    float ni_over_nt;
     attenuation = vec3(1.0, 1.0, 1.0);
     shadow = false;
-    float reflect_prob;
-    float cosine;
-    if (dot(r_in.direction(), rec.normal) > 0.0f) {
-        outward_normal = -rec.normal;
-        ni_over_nt = ref_idx;
-        cosine = dot(r_in.direction(), rec.normal);
-        cosine = sqrt(1.0f - ref_idx * ref_idx * (1 - cosine * cosine));
-    }
-    else {
-        outward_normal = rec.normal;
-        ni_over_nt = 1.0f / ref_idx;
-        cosine = -dot(r_in.direction(), rec.normal);
-    }
-    reflect_prob = schlick(cosine, ni_over_nt);
-    if (rnd(state) < reflect_prob)
+    bool frontFace = dot(r_in.direction(), rec.normal) < 0.0f;
+    vec3 hitNormal = frontFace ? rec.normal : -rec.normal;
+    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
+
+    float cos_theta = fminf(dot(-r_in.direction(), hitNormal), 1.0f);
+    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
+    if (etai_over_etat * sin_theta > 1.0f) {
+        vec3 reflected = reflect(r_in.direction(), hitNormal);
         scattered = ray(rec.p, reflected);
-    else
-        scatter_lambertian(albedo, rec, attenuation, scattered, state, shadow);
-    return true;
+        return true;
+    }
+
+    float reflect_prob = schlick(cos_theta, etai_over_etat);
+    if (rnd(state) < reflect_prob) {
+        vec3 reflected = reflect(r_in.direction(), hitNormal);
+        scattered = ray(rec.p, reflected);
+        return true;
+    }
+
+    return scatter_lambertian(albedo, rec, attenuation, scattered, state, shadow);
 }
 
+// based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
+__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
+    attenuation = vec3(1.0, 1.0, 1.0);
+    shadow = false;
+    bool frontFace = dot(r_in.direction(), rec.normal) < 0.0f;
+    vec3 hitNormal = frontFace ? rec.normal : -rec.normal;
+    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
+    if (!frontFace) {
+        // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
+        attenuation *= exp(-absorptionCoefficient * rec.t);
+    }
+
+    float cos_theta = fminf(dot(-r_in.direction(), hitNormal), 1.0f);
+    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
+    if (etai_over_etat * sin_theta > 1.0f) {
+        vec3 reflected = reflect(r_in.direction(), hitNormal);
+        scattered = ray(rec.p, reflected);
+        return true;
+    }
+
+    float reflect_prob = schlick(cos_theta, etai_over_etat);
+    if (rnd(state) < reflect_prob) {
+        vec3 reflected = reflect(r_in.direction(), hitNormal);
+        scattered = ray(rec.p, reflected);
+        return true;
+    }
+
+    vec3 refracted = refract(r_in.direction(), hitNormal, etai_over_etat);
+    scattered = ray(rec.p, refracted);
+    return true;
+}
 __device__ bool scatter(const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
     switch (m.type)
     {
@@ -111,6 +140,8 @@ __device__ bool scatter(const material& m, const ray& r_in, const hit_record& re
         return scatter_lambertian(m.albedo, rec, attenuation, scattered, state, shadow);
     case DIELECTRIC:
         return scatter_dielectric(m.ref_idx, r_in, rec, attenuation, scattered, state, shadow);
+    case TINTED_GLASS:
+        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, r_in, rec, attenuation, scattered, state, shadow);
     case METAL:
         return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state, shadow);
     case COAT:

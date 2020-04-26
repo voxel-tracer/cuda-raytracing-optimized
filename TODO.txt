@@ -37,19 +37,26 @@ PHASE I: POLYGON RENDERER
 
  TASKS
  -----
- - render obj model
+ - DONE render obj model
   . DONE load obj as triangle list
-  . copy triangles to constant memory
+  . DONE copy triangles to constant memory
     . constant mem size = 65536B, each triangle uses 3 vec3 = 3x3x float = 3x3x4B = 36B => we can store 1280 tris
-  . ray-triangle intersection with a single material
-- floor
-  . use 2 triangles to represent the floor
-  . make it big enough to catch any shadows
-  . use coat material
-- transparent background
-  . when ray hits sky it's value becomes transparent
-  . when ray hits floor and is scattered as diffuse it becomes transparent
-  . when ray hits floor and is scattered as specular 
+  . DONE ray-triangle intersection with a single material
+- DONE floor
+  . DONE use 2 triangles to represent the floor
+  . DONE make it big enough to catch any shadows
+  . DONE use coat material
+- DONE light and next event estimation
+ . DONE extend scatter() to update a hasShadow
+ . DONE color() compute shadowRay if hasShadow
+ . DONE hit() has a isShadow that will stop at first intersection
+ . DONE color() accounts for light emissiviness if hasShadow and no shadow hit
+- Lambert-Beer absorption
+ . GLASS material (vec3 absorptionColor, float absorptionDistance)
+  . absorptionCoefficient = -log(absorptionColor) / absorptionDistance
+ . when ray exits the model (frontFace = false), hit.t represents the distance travelled inside the model
+  . compute transmission = exp(-absorptionCoefficient * hit.t)
+  . attentuation *= transmission
 
  IMPROVEMENTS
  ------------
@@ -57,13 +64,18 @@ PHASE I: POLYGON RENDERER
   in the correct orientation. Makes it easier to use a standard camera position and orient
   the environment map
 - camera distance is computed automatically such that the whole model is visible in the viewport
+- transparent background (useful to create interesting renders in Gimp)
+  . when ray hits sky it's value becomes transparent
+  . when ray hits floor and is scattered as diffuse it becomes transparent
+  . when ray hits floor and is scattered as specular 
+- resume rendering from saved file (useful when we want to add more samples to an already expensive render)
 ---------------------------------------------------------------------------------------------------------
 
 
 Ideal target is to finish PHASE I by end of Ramadan (5 weeks)
 
 PHASE I
-- extend my renderer to support polygon models
+- DONE extend my renderer to support polygon models
 - good light setup and transparent background
 - do not worry about optimization and focus on models that can fit in constant memory
 

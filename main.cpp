@@ -133,10 +133,11 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     const vec3 floorColor1 = hexColor(0x511845);
     const vec3 floorColor2 = hexColor(0xff5733);
 
-    //(*h_materials)[0] = new_dielectric(1);
+    //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    (*h_materials)[0] = new_coat(modelColor, 1.5f);
+    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
+    (*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
     //(*h_materials)[1] = new_lambertian(floorColor1);
     (*h_materials)[1] = new_metal(floorColor1, 0.2);
@@ -151,7 +152,7 @@ int main() {
     bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 40 : 1024) : 1;
+    int ns = !perf ? (fast ? 40 : 4096) : 1;
     int tx = 8;
     int ty = 8;
 

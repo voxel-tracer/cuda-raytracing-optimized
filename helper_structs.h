@@ -30,14 +30,13 @@ struct material
     material_type type;
     union {
         vec3 albedo;
-        vec3 absorptionColor;
+        vec3 absorptionCoefficient;
     };
     vec3 albedo2;
     union {
         float fuzz;
         float ref_idx;
         float frequency;
-        float absorptionDistance;
     };
 };
 
@@ -46,7 +45,7 @@ material new_dielectric(float ref_idx);
 material new_metal(vec3 albedo, float fuzz);
 material new_coat(vec3 albedo, float ref_idx);
 material new_checker(vec3 albedo, vec3 albedo2, float frequency);
-material new_tintedGlass(vec3 absorptionColor, float absorptionDistance);
+material new_tintedGlass(vec3 absorptionColor, float absorptionDistance, float ref_idx);
 
 struct camera
 {

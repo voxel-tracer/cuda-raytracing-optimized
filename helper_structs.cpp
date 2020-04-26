@@ -20,6 +20,7 @@ material new_checker(vec3 albedo, vec3 albedo2, float frequency) {
     return material(CHECKER, albedo, albedo2, frequency);
 }
 
-material new_tintedGlass(vec3 absorptionColor, float absorptionDistance) {
-    return material(TINTED_GLASS, absorptionColor, vec3(), absorptionDistance);
+material new_tintedGlass(vec3 absorptionColor, float absorptionDistance, float ref_idx) {
+    const vec3 absorptionCoefficient = -log(absorptionColor) / absorptionDistance;
+    return material(TINTED_GLASS, absorptionCoefficient, vec3(), ref_idx);
 }
