@@ -2,6 +2,8 @@
 #include <time.h>
 #include <float.h>
 
+//#define CUBE
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -24,8 +26,13 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny) {
+#ifdef CUBE
+    vec3 lookfrom(5, -7.5, 5);
+    vec3 lookat(0, 0, 0);
+#else
     vec3 lookfrom(100, -150, 100);
     vec3 lookat(0, 0, 10);
+#endif
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
@@ -56,7 +63,6 @@ vec3 hexColor(int hexValue) {
 }
 
 bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials, uint16_t &numMats, float floorHalfSize) {
-//    std::string inputfile = "D:\\models\\lowpoly\\panter.obj";
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -107,9 +113,6 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
                 tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
-                //tinyobj::real_t nx = attrib.normals[3 * idx.vertex_index + 0];
-                //tinyobj::real_t ny = attrib.normals[3 * idx.vertex_index + 1];
-                //tinyobj::real_t nz = attrib.normals[3 * idx.vertex_index + 2];
                 (*h_triangles)[vec_index++] = vec3(vx, vy, vz);
             }
             index_offset += 3;
@@ -133,23 +136,29 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     const vec3 floorColor1 = hexColor(0x511845);
     const vec3 floorColor2 = hexColor(0xff5733);
 
-    //(*h_materials)[0] = new_dielectric(1.5);
+    (*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
     //(*h_materials)[0] = new_coat(modelColor, 1.5f);
-    (*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
+    //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
     //(*h_materials)[1] = new_lambertian(floorColor1);
-    (*h_materials)[1] = new_metal(floorColor1, 0.2);
+    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
     //(*h_materials)[1] = new_coat(floorColor1, 1.5f);
-    //(*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
+#ifdef CUBE
+    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);
+#else
+    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
+#endif // CUBE
+
+
 
     return true;
 }
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 1;
@@ -166,9 +175,11 @@ int main() {
         material* materials;
         uint16_t numTris;
         uint16_t numMats;
-        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials, numMats, 200)) {
-            return -1;
-        }
+#ifdef CUBE
+        if (!loadObj("D:\\models\\lowpoly\\cube.obj", &triangles, numTris, &materials, numMats, 200)) return -1;
+#else
+        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials, numMats, 200)) return -1;
+#endif
 
         std::cerr << " there are " << numTris << " triangles" << std::endl;
 
