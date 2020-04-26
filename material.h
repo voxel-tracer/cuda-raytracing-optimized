@@ -17,7 +17,8 @@ __device__ float schlick(float cosine, float ref_idx) {
 __device__ vec3 refract(const vec3& uv, const vec3& n, float etai_over_etat) {
     float cos_theta = fminf(dot(-uv, n), 1.0);
     vec3 r_out_parallel = etai_over_etat * (uv + cos_theta * n);
-    vec3 r_out_perp = -sqrt(1.0f - r_out_parallel.squared_length()) * n;
+    float sqlen = r_out_parallel.squared_length();
+    vec3 r_out_perp = sqlen >= 1.0f ? vec3(0, 0, 0) : -sqrt(1.0f - sqlen) * n;
     return r_out_parallel + r_out_perp;
 }
 

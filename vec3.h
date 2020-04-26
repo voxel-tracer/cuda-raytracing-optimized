@@ -102,6 +102,14 @@ __host__ __device__ inline vec3 exp(const vec3& v) {
     return vec3(expf(v.x()), expf(v.y()), expf(v.z()));
 }
 
+__host__ __device__ inline bool hasNans(const vec3& v) {
+    return isnan(v.x()) || isnan(v.y()) || isnan(v.z());
+}
+
+__host__ __device__ inline float min(const vec3& v) {
+    return fminf(v.x(), fminf(v.y(), v.z()));
+}
+
 __host__ __device__ inline vec3& vec3::operator+=(const vec3 &v){
     e[0]  += v.e[0];
     e[1]  += v.e[1];
