@@ -5,8 +5,19 @@
 #include "triangle.h"
 #include "material.h"
 
+#define STATS
+
 const int kMaxTris = 600;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
+
+#ifdef STATS
+#define NUM_RAYS_PRIMARY            0
+#define NUM_RAYS_SECONDARY          1
+#define NUM_RAYS_SHADOWS            2
+#define NUM_RAYS_LOW_POWER          3
+#define NUM_RAYS_PRIMARY_NO_HITS    4
+#define NUM_RAYS_SIZE               5
+#endif
 
 struct RenderContext {
     vec3* fb;
@@ -18,6 +29,9 @@ struct RenderContext {
     material* materials;
     uint16_t numMats;
     float* hdri = NULL;
+#ifdef STATS
+    uint32_t* numRays;
+#endif
 };
 
 RenderContext renderContext;
@@ -92,9 +106,21 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     vec3 curColor = vec3(0, 0, 0);
-    for (int i = 0; i < 50; i++) {
+    for (int bounce = 0; bounce < 50; bounce++) {
+#ifdef STATS
+        if (bounce == 0)
+            atomicAdd(context.numRays + NUM_RAYS_PRIMARY, 1);
+        else
+            atomicAdd(context.numRays + NUM_RAYS_SECONDARY, 1);
+        if (cur_attenuation.length() < 0.01f)
+            atomicAdd(context.numRays + NUM_RAYS_LOW_POWER, 1);
+#endif
         hit_record rec;
         if (hit(cur_ray, context.numTris, 0.001f, FLT_MAX, rec, false)) {
+#ifdef STATS
+            if (bounce == 0 && rec.hitIdx == 1) // primary ray hit didn't hit the main model
+                atomicAdd(context.numRays + NUM_RAYS_PRIMARY_NO_HITS, 1);
+#endif
             ray scattered;
             vec3 attenuation;
             bool hasShadow;
@@ -105,9 +131,14 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
                 // trace shadow ray if needed
                 ray shadow;
                 vec3 emitted;
-                if (hasShadow && generateShadowRay(rec, shadow, emitted, state) && !hit(shadow, context.numTris, 0.001f, FLT_MAX, rec, true)) {
-                    // intersection point is illuminated by the light
-                    curColor += emitted * cur_attenuation;
+                if (hasShadow && generateShadowRay(rec, shadow, emitted, state)) {
+#ifdef STATS
+                    atomicAdd(context.numRays + NUM_RAYS_SHADOWS, 1);
+#endif
+                    if (!hit(shadow, context.numTris, 0.001f, FLT_MAX, rec, true)) {
+                        // intersection point is illuminated by the light
+                        curColor += emitted * cur_attenuation;
+                    }
                 }
             }
             else {
@@ -115,6 +146,10 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
             }
         }
         else {
+#ifdef STATS
+            if (bounce == 0) // primary ray hit didn't hit anything
+                atomicAdd(context.numRays + NUM_RAYS_PRIMARY_NO_HITS, 1);
+#endif
             if (context.hdri != NULL) {
                 // environment map
                 vec3 dir = unit_vector(cur_ray.direction());
@@ -181,6 +216,10 @@ initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, u
     renderContext.numTris = numTris;
 
     renderContext.cam = cam;
+#ifdef STATS
+    checkCudaErrors(cudaMallocManaged((void**)&(renderContext.numRays), NUM_RAYS_SIZE * sizeof(uint32_t)));
+    memset(renderContext.numRays, 0, NUM_RAYS_SIZE * sizeof(uint32_t));
+#endif
 }
 
 extern "C" 
@@ -199,6 +238,14 @@ runRenderer(int ns, int tx, int ty) {
     render <<<blocks, threads >>> (renderContext);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
+#ifdef STATS
+    std::cerr << "num rays:\n";
+    std::cerr << "\tprimary:\t" << renderContext.numRays[NUM_RAYS_PRIMARY] << std::endl;
+    std::cerr << "\tprimary (no hit):\t" << renderContext.numRays[NUM_RAYS_PRIMARY_NO_HITS] << std::endl;
+    std::cerr << "\tsecondary:\t" << renderContext.numRays[NUM_RAYS_SECONDARY] << std::endl;
+    std::cerr << "\tshadows:\t" << renderContext.numRays[NUM_RAYS_SHADOWS] << std::endl;
+    std::cerr << "\tpower < 0.1:\t" << renderContext.numRays[NUM_RAYS_LOW_POWER] << std::endl;
+#endif
 }
 
 extern "C" void

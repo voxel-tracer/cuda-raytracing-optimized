@@ -139,8 +139,8 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    (*h_materials)[0] = new_coat(modelColor, 1.5f);
-    //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
+    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
+    (*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
 #ifdef CUBE
     (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);

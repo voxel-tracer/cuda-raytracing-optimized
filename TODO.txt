@@ -23,17 +23,24 @@ PHASE I: POLYGON RENDERER
  ------------
 - support large triangle mesh .obj models
 - support a few interesting materials that produce great renderers
- . tinted glass with Beer-lambert model
+ . DONE tinted glass with Beer-lambert model
  . Peter Shirley's brute force subsurface scattering
  . also see this answer that goes into a lot of details about SSS: https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
- . existing plastic (diffuse + coat)
-- basic lighting and background setup that produces great renderers
+ . DONE existing plastic/coat (diffuse + glass)
+- DONE basic lighting and background setup that produces great renderers
+
+ DELIVERABLES
+ ------------
+- great looking renders that may be too slow to renderer
 
 * at this point I should have great looking renderer that are too slow
  . now I can start optimizing the renderer as much as possible
  
 * once the renderer is fast enough I can add support for an OpenGL viewer
  . this will showcase how quickly can my renderer produce interesting images
+
+* I can also integrate my work in Lighthouse 2 as a separate CUDA core
+ . this will allow me quickly add support for UI and models/materials and interesting scenes
 
  TASKS
  -----
@@ -51,10 +58,10 @@ PHASE I: POLYGON RENDERER
  . DONE color() compute shadowRay if hasShadow
  . DONE hit() has a isShadow that will stop at first intersection
  . DONE color() accounts for light emissiviness if hasShadow and no shadow hit
-- Lambert-Beer absorption
- . GLASS material (vec3 absorptionColor, float absorptionDistance)
+- DONE Lambert-Beer absorption
+ . DONE GLASS material (vec3 absorptionColor, float absorptionDistance)
   . absorptionCoefficient = -log(absorptionColor) / absorptionDistance
- . when ray exits the model (frontFace = false), hit.t represents the distance travelled inside the model
+ . DONE when ray exits the model (frontFace = false), hit.t represents the distance travelled inside the model
   . compute transmission = exp(-absorptionCoefficient * hit.t)
   . attentuation *= transmission
 
@@ -87,3 +94,20 @@ OTHER DELIVERABLES IN NO PARTICULAR ORDER
  . we can start with render goes straight to disk
 - advanced materials: implement Disney BRDF and add UI to configure materials
 - allow setting different material per original model color
+
+
+----------------------------------------------------------------------------------------------------------
+STATS FOR TINTED GLASS ON COAT w/ 1024spp
+
+primary:          983.040.000
+primary(nohit):   747.703.389
+secondary:      1.965.692.427
+shadows:          851.167.283
+power < 0.1:      369.910.132
+
+same stats for 4096spp
+primary:        3.932.160.000
+primary(nohit): 2.990.816.128
+secondary:      3.567.756.802
+shadows:        3.404.672.183
+power < 0.1:    1.479.651.414
