@@ -5,18 +5,22 @@
 #include "triangle.h"
 #include "material.h"
 
-vec3* m_fb;
-material* d_materials;
-camera d_camera;
-float* d_hdri = NULL;
-int hdri_x;
-int hdri_y;
-
 const int kMaxTris = 600;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 
-uint16_t d_numTris;
-uint16_t d_numMats;
+struct RenderContext {
+    vec3* fb;
+    uint16_t numTris;
+    int nx;
+    int ny;
+    int ns;
+    camera cam;
+    material* materials;
+    uint16_t numMats;
+    float* hdri = NULL;
+};
+
+RenderContext renderContext;
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -84,24 +88,24 @@ __device__ bool generateShadowRay(const hit_record& hit, ray& shadow, vec3& emit
 // it was blowing up the stack, so we have to turn this into a
 // limited-depth loop instead.  Later code in the book limits to a max
 // depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const float* hdri, rand_state& state) {
+__device__ vec3 color(const ray& r, const RenderContext& context, rand_state& state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     vec3 curColor = vec3(0, 0, 0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if (hit(cur_ray, numTris, 0.001f, FLT_MAX, rec, false)) {
+        if (hit(cur_ray, context.numTris, 0.001f, FLT_MAX, rec, false)) {
             ray scattered;
             vec3 attenuation;
             bool hasShadow;
-            if (scatter(materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state, hasShadow)) {
+            if (scatter(context.materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state, hasShadow)) {
                 cur_attenuation *= attenuation;
                 cur_ray = scattered;
 
                 // trace shadow ray if needed
                 ray shadow;
                 vec3 emitted;
-                if (hasShadow && generateShadowRay(rec, shadow, emitted, state) && !hit(shadow, numTris, 0.001f, FLT_MAX, rec, true)) {
+                if (hasShadow && generateShadowRay(rec, shadow, emitted, state) && !hit(shadow, context.numTris, 0.001f, FLT_MAX, rec, true)) {
                     // intersection point is illuminated by the light
                     curColor += emitted * cur_attenuation;
                 }
@@ -111,83 +115,88 @@ __device__ vec3 color(const ray& r, uint16_t numTris, material* materials, const
             }
         }
         else {
-            // environment map
-            //vec3 dir = unit_vector(cur_ray.direction());
-            //uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
-            //vec3 c(
-            //    hdri[(coords.y * 1024 + coords.x)*3],
-            //    hdri[(coords.y * 1024 + coords.x)*3 + 1],
-            //    hdri[(coords.y * 1024 + coords.x)*3 + 2]
-            //);
-            //return cur_attenuation * c;
-
-            // sky color
-            vec3 unit_direction = cur_ray.direction();
-            float t = 0.5f * (unit_direction.z() + 1.0f);
-            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-            curColor += c * cur_attenuation;
-            return curColor;
-
-            // uniform sky color
-            //curColor += cur_attenuation * .5f;
-            //return curColor;
+            if (context.hdri != NULL) {
+                // environment map
+                vec3 dir = unit_vector(cur_ray.direction());
+                uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
+                vec3 c(
+                    context.hdri[(coords.y * 1024 + coords.x)*3],
+                    context.hdri[(coords.y * 1024 + coords.x)*3 + 1],
+                    context.hdri[(coords.y * 1024 + coords.x)*3 + 2]
+                );
+                return cur_attenuation * c;
+            }
+            else {
+                // sky color
+                vec3 unit_direction = cur_ray.direction();
+                float t = 0.5f * (unit_direction.z() + 1.0f);
+                vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+                curColor += c * cur_attenuation;
+                return curColor;
+                // uniform sky color
+                //curColor += cur_attenuation * .5f;
+                //return curColor;
+            }
         }
     }
     return curColor; // exceeded recursion
 }
 
-__global__ void render(vec3* fb, uint16_t numTris, int max_x, int max_y, int ns, const camera cam, material* materials, uint16_t numMats, const float* hdri) {
+__global__ void render(const RenderContext context) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
-    if ((i >= max_x) || (j >= max_y)) return;
-    int pixel_index = j * max_x + i;
+    if ((i >= context.nx) || (j >= context.ny)) return;
+    int pixel_index = j * context.nx + i;
     rand_state state = (wang_hash(pixel_index) * 336343633) | 1;
 
     vec3 col(0, 0, 0);
-    for (int s = 0; s < ns; s++) {
-        float u = float(i + rnd(state)) / float(max_x);
-        float v = float(j + rnd(state)) / float(max_y);
-        ray r = get_ray(cam, u, v, state);
-        col += color(r, numTris, materials, hdri, state);
+    for (int s = 0; s < context.ns; s++) {
+        float u = float(i + rnd(state)) / float(context.nx);
+        float v = float(j + rnd(state)) / float(context.ny);
+        ray r = get_ray(context.cam, u, v, state);
+        col += color(r, context, state);
     }
-    col /= float(ns);
+    col /= float(context.ns);
     col[0] = sqrt(col[0]);
     col[1] = sqrt(col[1]);
     col[2] = sqrt(col[2]);
-    fb[pixel_index] = col;
+    context.fb[pixel_index] = col;
 }
 
 extern "C" void
 initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, const camera cam, vec3 **fb, int nx, int ny) {
-    int num_pixels = nx * ny;
-    size_t fb_size = num_pixels * sizeof(vec3);
+    renderContext.nx = nx;
+    renderContext.ny = ny;
 
-    checkCudaErrors(cudaMallocManaged((void**)&m_fb, fb_size));
-    *fb = m_fb;
+    size_t fb_size = nx * ny * sizeof(vec3);
+    checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
+    *fb = renderContext.fb;
 
     // all triangles share the same material
-    checkCudaErrors(cudaMalloc((void**)&d_materials, numMats * sizeof(material)));
-    checkCudaErrors(cudaMemcpy(d_materials, h_materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
-    d_numMats = numMats;
+    checkCudaErrors(cudaMalloc((void**)&renderContext.materials, numMats * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(renderContext.materials, h_materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
+    renderContext.numMats = numMats;
 
     checkCudaErrors(cudaMemcpyToSymbol(d_triangles, h_triangles, numTris * 3 * sizeof(vec3)));
-    d_numTris = numTris;
+    renderContext.numTris = numTris;
 
-    d_camera = cam;
+    renderContext.cam = cam;
 }
 
 extern "C" 
 void initHDRi(float* data, int x, int y, int n) {
-    checkCudaErrors(cudaMalloc((void**)&d_hdri, x * y * n * sizeof(float)));
-    checkCudaErrors(cudaMemcpy(d_hdri, data, x * y * n * sizeof(float), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.hdri, x * y * n * sizeof(float)));
+    checkCudaErrors(cudaMemcpy(renderContext.hdri, data, x * y * n * sizeof(float), cudaMemcpyHostToDevice));
 }
 
 extern "C" void
-runRenderer(int nx, int ny, int ns, int tx, int ty) {
+runRenderer(int ns, int tx, int ty) {
+    renderContext.ns = ns;
+
     // Render our buffer
-    dim3 blocks(nx / tx + 1, ny / ty + 1);
+    dim3 blocks(renderContext.nx / tx + 1, renderContext.ny / ty + 1);
     dim3 threads(tx, ty);
-    render <<<blocks, threads >>> (m_fb, d_numTris, nx, ny, ns, d_camera, d_materials, d_numMats, d_hdri);
+    render <<<blocks, threads >>> (renderContext);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
@@ -195,9 +204,9 @@ runRenderer(int nx, int ny, int ns, int tx, int ty) {
 extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
-    checkCudaErrors(cudaFree(d_materials));
-    checkCudaErrors(cudaFree(m_fb));
-    if (d_hdri != NULL) checkCudaErrors(cudaFree(d_hdri));
+    checkCudaErrors(cudaFree(renderContext.materials));
+    checkCudaErrors(cudaFree(renderContext.fb));
+    if (renderContext.hdri != NULL) checkCudaErrors(cudaFree(renderContext.hdri));
 
     cudaDeviceReset();
 }

@@ -15,7 +15,7 @@
 
 extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, uint16_t numMats, const camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void initHDRi(float* data, int x, int y, int n);
-extern "C" void runRenderer(int nx, int ny, int ns, int tx, int ty);
+extern "C" void runRenderer(int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
 
 float random_float(unsigned int& state) {
@@ -136,19 +136,19 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     const vec3 floorColor1 = hexColor(0x511845);
     const vec3 floorColor2 = hexColor(0xff5733);
 
-    (*h_materials)[0] = new_dielectric(1.5);
+    //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
+    (*h_materials)[0] = new_coat(modelColor, 1.5f);
     //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
-    //(*h_materials)[1] = new_lambertian(floorColor1);
-    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
-    //(*h_materials)[1] = new_coat(floorColor1, 1.5f);
 #ifdef CUBE
     (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);
 #else
-    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
+    //(*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
+    //(*h_materials)[1] = new_lambertian(floorColor1);
+    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
+    (*h_materials)[1] = new_coat(floorColor1, 1.5f);
 #endif // CUBE
 
 
@@ -156,9 +156,22 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     return true;
 }
 
+void loadHDRiEnvMap(const char *filename) {
+    int x, y, n;
+    float* data = stbi_loadf(filename, &x, &y, &n, 0);
+    float max = 0;
+    for (int i = 0; i < (x * y * n); i++) {
+        max = fmaxf(max, data[i]);
+    }
+
+    std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
+    initHDRi(data, x, y, n);
+    stbi_image_free(data);
+}
+
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 1;
@@ -189,24 +202,12 @@ int main() {
         delete[] triangles;
         delete[] materials;
 
-        // load hdri
-        //{
-        //    int x, y, n;
-        //    float* data = stbi_loadf("lebombo_1k.hdr", &x, &y, &n, 0);
-        //    float max = 0;
-        //    for (int i = 0; i < (x * y * n); i++) {
-        //        max = fmaxf(max, data[i]);
-        //    }
-
-        //    std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
-        //    initHDRi(data, x, y, n);
-        //    stbi_image_free(data);
-        //}
+        //loadHDRiEnvMap("lebombo_1k.hdr");
     }
 
     clock_t start, stop;
     start = clock();
-    runRenderer(nx, ny, ns, tx, ty);
+    runRenderer(ns, tx, ty);
     stop = clock();
     double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
     std::cerr << "took " << timer_seconds << " seconds.\n";
