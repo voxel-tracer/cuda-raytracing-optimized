@@ -168,8 +168,9 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
                 vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
                 curColor += c * cur_attenuation;
                 return curColor;
+
                 // uniform sky color
-                //curColor += cur_attenuation * .5f;
+                //curColor += cur_attenuation; // sky is (1, 1, 1)
                 //return curColor;
             }
         }
