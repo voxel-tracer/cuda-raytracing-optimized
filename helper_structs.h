@@ -3,6 +3,14 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
+struct plane {
+    vec3 norm;
+    vec3 point; // point in the plane
+
+    plane() {}
+    plane(vec3 p, vec3 n) :point(p), norm(unit_vector(n)) {}
+};
+
 struct sphere
 {
     sphere() {}

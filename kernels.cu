@@ -29,8 +29,7 @@ struct RenderContext {
     material* materials;
     uint16_t numMats;
     float* hdri = NULL;
-    vec3 floorN;
-    vec3 floorP;
+    plane floor;
 #ifdef STATS
     uint32_t* numRays;
 #endif
@@ -69,7 +68,7 @@ __device__ bool hit(const ray& r, const RenderContext& context, float t_min, flo
         return true;
     }
 
-    if (planeHit(context.floorP, context.floorN, r, t_min, t_max, temp_rec)) {
+    if (planeHit(context.floor, r, t_min, t_max, temp_rec)) {
         rec = temp_rec;
         rec.hitIdx = 1;
         return true;
@@ -211,11 +210,10 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, vec3 floorP, vec3 floorN, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
     renderContext.nx = nx;
     renderContext.ny = ny;
-    renderContext.floorN = floorN;
-    renderContext.floorP = floorP;
+    renderContext.floor = floor;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
