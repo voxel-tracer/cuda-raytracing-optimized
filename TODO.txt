@@ -149,7 +149,8 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . this will simplify handling all triangles as a single mesh
 - DONE compute bounding box for the mesh and use it to quickly discard rays
   25% speedup
-- measue how many secondary rays are from the mesh
+- DONE measue how many secondary rays are from the mesh
+- DONE measure how many secondary rays are nohit
 - if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
   this should bring speedup to 4x
  . start by measuring how many rays are affected by this and only work on it if it has good potential

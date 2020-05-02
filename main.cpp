@@ -186,6 +186,7 @@ int main() {
     int tx = 8;
     int ty = 8;
 
+    std::cerr.imbue(std::locale(""));
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
@@ -202,7 +203,7 @@ int main() {
         if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor)) return -1;
 #endif
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
-        std::cerr << " bbox.min " << m.bounds.min << "\nbbox.max " << m.bounds.max << std::endl;
+        std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
         setupMaterials(&materials, numMats);
 

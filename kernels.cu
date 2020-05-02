@@ -5,7 +5,7 @@
 #include "triangle.h"
 #include "material.h"
 
-#define STATS
+//#define STATS
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -29,12 +29,14 @@ __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 #define NUM_RAYS_PRIMARY_BBOX_NOHITS    2
 #define NUM_RAYS_SECONDARY              3
 #define NUM_RAYS_SECONDARY_MESH         4
-#define NUM_RAYS_SECONDARY_BBOX_NOHIT   5
-#define NUM_RAYS_SHADOWS                6
-#define NUM_RAYS_SHADOWS_BBOX_NOHITS    7
-#define NUM_RAYS_SHADOWS_NOHITS         8
-#define NUM_RAYS_LOW_POWER              9
-#define NUM_RAYS_SIZE                   10
+#define NUM_RAYS_SECONDARY_NOHIT        5
+#define NUM_RAYS_SECONDARY_MESH_NOHIT   6
+#define NUM_RAYS_SECONDARY_BBOX_NOHIT   7
+#define NUM_RAYS_SHADOWS                8
+#define NUM_RAYS_SHADOWS_BBOX_NOHITS    9
+#define NUM_RAYS_SHADOWS_NOHITS         10
+#define NUM_RAYS_LOW_POWER              11
+#define NUM_RAYS_SIZE                   12
 #endif
 
 struct RenderContext {
@@ -60,16 +62,18 @@ struct RenderContext {
     }
     void printStats() const {
         std::cerr << "num rays:\n";
-        std::cerr << " primary           : " << numRays[NUM_RAYS_PRIMARY] << std::endl;
-        std::cerr << " primary nohit     : " << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
-        std::cerr << " primary bb nohit  : " << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
-        std::cerr << " secondary         : " << numRays[NUM_RAYS_SECONDARY] << std::endl;
-        std::cerr << " secondary mesh    : " << numRays[NUM_RAYS_SECONDARY_MESH] << std::endl;
-        std::cerr << " secondary bb nohit: " << numRays[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
-        std::cerr << " shadows           : " << numRays[NUM_RAYS_SHADOWS] << std::endl;
-        std::cerr << " shadows nohit     : " << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
-        std::cerr << " shadows bb nohit  : " << numRays[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
-        std::cerr << " power < 0.1       : " << numRays[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " primary             : " << std::fixed << numRays[NUM_RAYS_PRIMARY] << std::endl;
+        std::cerr << " primary nohit       : " << std::fixed << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " primary bb nohit    : " << std::fixed << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
+        std::cerr << " secondary           : " << std::fixed << numRays[NUM_RAYS_SECONDARY] << std::endl;
+        std::cerr << " secondary no hit    : " << std::fixed << numRays[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
+        std::cerr << " secondary bb nohit  : " << std::fixed << numRays[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
+        std::cerr << " secondary mesh      : " << std::fixed << numRays[NUM_RAYS_SECONDARY_MESH] << std::endl;
+        std::cerr << " secondary mesh nohit: " << std::fixed << numRays[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
+        std::cerr << " shadows             : " << std::fixed << numRays[NUM_RAYS_SHADOWS] << std::endl;
+        std::cerr << " shadows nohit       : " << std::fixed << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " shadows bb nohit    : " << std::fixed << numRays[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
+        std::cerr << " power < 0.1         : " << std::fixed << numRays[NUM_RAYS_LOW_POWER] << std::endl;
     }
 #else
     __device__ void rayStat(int type) const {}
@@ -104,9 +108,10 @@ __device__ bool hit(const ray& r, const RenderContext& context, float t_min, flo
             return true;
         }
     } else {
+#ifdef STATS
         if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
-        else if (primary) context.rayStat(NUM_RAYS_PRIMARY_BBOX_NOHITS);
-        else context.rayStat(NUM_RAYS_SECONDARY_BBOX_NOHIT);
+        else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
+#endif
     }
 
     if (planeHit(context.floor, r, t_min, t_max, temp_rec)) {
@@ -159,15 +164,18 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
     vec3 curColor = vec3(0, 0, 0);
     bool fromMesh = false;
     for (int bounce = 0; bounce < 50; bounce++) {
-        if (bounce == 0) context.rayStat(NUM_RAYS_PRIMARY);
-        else context.rayStat(NUM_RAYS_SECONDARY);
+        bool primary = bounce == 0;
+#ifdef STATS
+        context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
         if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
-
+#endif
         hit_record rec;
-        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, bounce == 0, false)) {
+        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, primary, false)) {
             fromMesh = rec.hitIdx == 0;
-            if (bounce == 0 && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
+#ifdef STATS
+            if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
+#endif
             ray scattered;
             vec3 attenuation;
             bool hasShadow;
@@ -179,11 +187,13 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
                 ray shadow;
                 vec3 emitted;
                 if (hasShadow && generateShadowRay(rec, shadow, emitted, state)) {
+#ifdef STATS
                     context.rayStat(NUM_RAYS_SHADOWS);
-
+#endif
                     if (!hit(shadow, context, 0.001f, FLT_MAX, rec, bounce == 0, true)) {
+#ifdef STATS
                         context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
-
+#endif
                         // intersection point is illuminated by the light
                         curColor += emitted * cur_attenuation;
                     }
@@ -194,8 +204,10 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
             }
         }
         else {
-            if (bounce == 0) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
-
+#ifdef STATS
+            if (primary) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
+            else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
+#endif
             if (context.hdri != NULL) {
                 // environment map
                 vec3 dir = unit_vector(cur_ray.direction());
