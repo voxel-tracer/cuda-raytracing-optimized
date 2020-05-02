@@ -7,6 +7,19 @@
 
 #define STATS
 
+// limited version of checkCudaErrors from helper_cuda.h in CUDA examples
+#define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
+
+void check_cuda(cudaError_t result, char const* const func, const char* const file, int const line) {
+    if (result) {
+        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
+            file << ":" << line << " '" << func << "' \n";
+        // Make sure we call CUDA Device Reset before exiting
+        cudaDeviceReset();
+        exit(99);
+    }
+}
+
 const int kMaxTris = 600;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 
@@ -15,12 +28,13 @@ __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 #define NUM_RAYS_PRIMARY_NOHITS         1
 #define NUM_RAYS_PRIMARY_BBOX_NOHITS    2
 #define NUM_RAYS_SECONDARY              3
-#define NUM_RAYS_SECONDARY_BBOX_NOHIT   4
-#define NUM_RAYS_SHADOWS                5
-#define NUM_RAYS_SHADOWS_BBOX_NOHITS    6
-#define NUM_RAYS_SHADOWS_NOHITS         7
-#define NUM_RAYS_LOW_POWER              8
-#define NUM_RAYS_SIZE                   9
+#define NUM_RAYS_SECONDARY_MESH         4
+#define NUM_RAYS_SECONDARY_BBOX_NOHIT   5
+#define NUM_RAYS_SHADOWS                6
+#define NUM_RAYS_SHADOWS_BBOX_NOHITS    7
+#define NUM_RAYS_SHADOWS_NOHITS         8
+#define NUM_RAYS_LOW_POWER              9
+#define NUM_RAYS_SIZE                   10
 #endif
 
 struct RenderContext {
@@ -36,9 +50,13 @@ struct RenderContext {
     float* hdri = NULL;
     plane floor;
 #ifdef STATS
-    uint32_t* numRays;
+    uint64_t* numRays;
     __device__ void rayStat(int type) const {
         atomicAdd(numRays + type, 1);
+    }
+    void initStats() {
+        checkCudaErrors(cudaMallocManaged((void**)&numRays, NUM_RAYS_SIZE * sizeof(uint64_t)));
+        memset(numRays, 0, NUM_RAYS_SIZE * sizeof(uint64_t));
     }
     void printStats() const {
         std::cerr << "num rays:\n";
@@ -46,6 +64,7 @@ struct RenderContext {
         std::cerr << " primary nohit     : " << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
         std::cerr << " primary bb nohit  : " << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
         std::cerr << " secondary         : " << numRays[NUM_RAYS_SECONDARY] << std::endl;
+        std::cerr << " secondary mesh    : " << numRays[NUM_RAYS_SECONDARY_MESH] << std::endl;
         std::cerr << " secondary bb nohit: " << numRays[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
         std::cerr << " shadows           : " << numRays[NUM_RAYS_SHADOWS] << std::endl;
         std::cerr << " shadows nohit     : " << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
@@ -54,24 +73,12 @@ struct RenderContext {
     }
 #else
     __device__ void rayStat(int type) const {}
+    void initStats() {}
     void printStats() const {}
 #endif
 };
 
 RenderContext renderContext;
-
-// limited version of checkCudaErrors from helper_cuda.h in CUDA examples
-#define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
-
-void check_cuda(cudaError_t result, char const* const func, const char* const file, int const line) {
-    if (result) {
-        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
-            file << ":" << line << " '" << func << "' \n";
-        // Make sure we call CUDA Device Reset before exiting
-        cudaDeviceReset();
-        exit(99);
-    }
-}
 
 __device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
     bool bboxHit = hit_bbox(context.bounds, r, t_max);
@@ -150,15 +157,17 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     vec3 curColor = vec3(0, 0, 0);
+    bool fromMesh = false;
     for (int bounce = 0; bounce < 50; bounce++) {
         if (bounce == 0) context.rayStat(NUM_RAYS_PRIMARY);
         else context.rayStat(NUM_RAYS_SECONDARY);
+        if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 
         hit_record rec;
         if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, bounce == 0, false)) {
-            if (bounce == 0 && rec.hitIdx == 1) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
-
+            fromMesh = rec.hitIdx == 0;
+            if (bounce == 0 && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
             ray scattered;
             vec3 attenuation;
             bool hasShadow;
@@ -256,10 +265,8 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
     renderContext.bounds = m.bounds;
 
     renderContext.cam = cam;
-#ifdef STATS
-    checkCudaErrors(cudaMallocManaged((void**)&(renderContext.numRays), NUM_RAYS_SIZE * sizeof(uint32_t)));
-    memset(renderContext.numRays, 0, NUM_RAYS_SIZE * sizeof(uint32_t));
-#endif
+
+    renderContext.initStats();
 }
 
 extern "C" 
