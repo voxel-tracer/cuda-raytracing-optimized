@@ -11,6 +11,21 @@ struct hit_record {
     int hitIdx;
 };
 
+__device__ bool planeHit(const vec3& p, const vec3& n, const ray& r, float t_min, float t_max, hit_record& rec) {
+    float denom = dot(-n, r.direction());
+    if (denom > 0.000001f) {
+        vec3 po = p - r.origin();
+        float t = dot(po, -n) / denom;
+        if (t >= t_min && t < t_max) {
+            rec.normal = n;
+            rec.t = t;
+            rec.p = r.point_at_parameter(t);
+            return true;
+        }
+    }
+    return false;
+}
+
 __device__ bool triangleHit(const vec3* tri, const ray& r, float t_min, float t_max, hit_record& rec) {
     const float EPSILON = 0.0000001;
     vec3 vertex0 = tri[0];

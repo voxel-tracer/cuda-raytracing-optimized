@@ -13,7 +13,7 @@
 // Required to include vec3.h
 #include "helper_structs.h"
 
-extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, uint16_t numMats, const camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, uint16_t numMats, vec3 floorP, vec3 floorN, const camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void initHDRi(float* data, int x, int y, int n);
 extern "C" void runRenderer(int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
@@ -62,7 +62,7 @@ vec3 hexColor(int hexValue) {
     return vec3(r, g, b) / 255.0;
 }
 
-bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials, uint16_t &numMats, float floorHalfSize) {
+bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, material** h_materials, uint16_t &numMats) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -93,7 +93,6 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     for (auto s = 0; s < shapes.size(); s++) {
         numTris += shapes[s].mesh.num_face_vertices.size();
     }
-    numTris += 2; // to account for the floor
 
     // loop over shapes and copy all triangles to array
     *h_triangles = new vec3[numTris * 3];
@@ -119,14 +118,6 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
         }
     }
 
-    // add a floor at z = 0
-    (*h_triangles)[vec_index++] = vec3(1, -1, -0.0001) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, 1, -0.0001) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.0001) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(1, -1, -0.0001) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, 1, -0.0001) * floorHalfSize;
-    (*h_triangles)[vec_index++] = vec3(-1, -1, -0.0001) * floorHalfSize;
-
     // create a single material for all triangles
     unsigned int rand_state = 0;
 
@@ -139,8 +130,8 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
-    (*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
+    (*h_materials)[0] = new_coat(modelColor, 1.5f);
+    //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
 #ifdef CUBE
     (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);
@@ -150,8 +141,6 @@ bool loadObj(const char * filename, vec3 ** h_triangles, uint16_t &numTris, mate
     //(*h_materials)[1] = new_metal(floorColor1, 0.2);
     (*h_materials)[1] = new_coat(floorColor1, 1.5f);
 #endif // CUBE
-
-
 
     return true;
 }
@@ -189,16 +178,20 @@ int main() {
         uint16_t numTris;
         uint16_t numMats;
 #ifdef CUBE
-        if (!loadObj("D:\\models\\lowpoly\\cube.obj", &triangles, numTris, &materials, numMats, 200)) return -1;
+        if (!loadObj("D:\\models\\lowpoly\\cube.obj", &triangles, numTris, &materials, numMats)) return -1;
 #else
-        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials, numMats, 200)) return -1;
+        if (!loadObj("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, &materials, numMats)) return -1;
 #endif
 
         std::cerr << " there are " << numTris << " triangles" << std::endl;
 
         camera cam = setup_camera(nx, ny);
 
-        initRenderer(triangles, numTris, materials, numMats, cam, &fb, nx, ny);
+        // setup floor
+        vec3 floorN(0, 0, 1);
+        vec3 floorP(0, 0, -0.0001);
+
+        initRenderer(triangles, numTris, materials, numMats, floorP, floorN, cam, &fb, nx, ny);
         delete[] triangles;
         delete[] materials;
 

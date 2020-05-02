@@ -29,6 +29,8 @@ struct RenderContext {
     material* materials;
     uint16_t numMats;
     float* hdri = NULL;
+    vec3 floorN;
+    vec3 floorP;
 #ifdef STATS
     uint32_t* numRays;
 #endif
@@ -49,22 +51,31 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__device__ bool hit(const ray& r, uint16_t numTris, float t_min, float t_max, hit_record& rec, bool isShadow) {
+__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool isShadow) {
     hit_record temp_rec;
     bool hit_anything = false;
     float closest_so_far = t_max;
-    for (int i = 0; i < numTris; i++) {
+    for (int i = 0; i < context.numTris; i++) {
         if (triangleHit(d_triangles + i * 3, r, t_min, closest_so_far, temp_rec)) {
             if (isShadow) return true;
 
             hit_anything = true;
             closest_so_far = temp_rec.t;
             rec = temp_rec;
-            rec.hitIdx = i;
         }
     }
-    rec.hitIdx = rec.hitIdx < (numTris - 2) ? 0 : 1; // last 2 triangles is for the floor
-    return hit_anything;
+    if (hit_anything) {
+        rec.hitIdx = 0;
+        return true;
+    }
+
+    if (planeHit(context.floorP, context.floorN, r, t_min, t_max, temp_rec)) {
+        rec = temp_rec;
+        rec.hitIdx = 1;
+        return true;
+    }
+
+    return false;
 }
 
 __device__ bool generateShadowRay(const hit_record& hit, ray& shadow, vec3& emitted, rand_state& state) {
@@ -116,7 +127,7 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
             atomicAdd(context.numRays + NUM_RAYS_LOW_POWER, 1);
 #endif
         hit_record rec;
-        if (hit(cur_ray, context.numTris, 0.001f, FLT_MAX, rec, false)) {
+        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, false)) {
 #ifdef STATS
             if (bounce == 0 && rec.hitIdx == 1) // primary ray hit didn't hit the main model
                 atomicAdd(context.numRays + NUM_RAYS_PRIMARY_NO_HITS, 1);
@@ -135,7 +146,7 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
 #ifdef STATS
                     atomicAdd(context.numRays + NUM_RAYS_SHADOWS, 1);
 #endif
-                    if (!hit(shadow, context.numTris, 0.001f, FLT_MAX, rec, true)) {
+                    if (!hit(shadow, context, 0.001f, FLT_MAX, rec, true)) {
                         // intersection point is illuminated by the light
                         curColor += emitted * cur_attenuation;
                     }
@@ -200,9 +211,11 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, vec3 floorP, vec3 floorN, const camera cam, vec3 **fb, int nx, int ny) {
     renderContext.nx = nx;
     renderContext.ny = ny;
+    renderContext.floorN = floorN;
+    renderContext.floorP = floorP;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
