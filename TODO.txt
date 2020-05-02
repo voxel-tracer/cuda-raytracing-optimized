@@ -151,9 +151,9 @@ PHASE I.2 BASIC OPTIMIZATIONS
   25% speedup
 - DONE measue how many secondary rays are from the mesh
 - DONE measure how many secondary rays are nohit
-- if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
+- DONE if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
   this should bring speedup to 4x
- . start by measuring how many rays are affected by this and only work on it if it has good potential
+  in total we pruned 2.7B rays but 2.2B of those rays were bb nohit anyway so not much performance gain
 - build a simplified grid acceleration structure
   for N^3 grid rays will at most traverse 3N => 
   N=2 => 4x
