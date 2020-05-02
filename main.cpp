@@ -13,7 +13,7 @@
 // Required to include vec3.h
 #include "helper_structs.h"
 
-extern "C" void initRenderer(const vec3 * h_triangles, uint16_t numTris, material * h_materials, uint16_t numMats, plane floor, const camera cam, vec3 * *fb, int nx, int ny);
+extern "C" void initRenderer(const mesh m, material * h_materials, uint16_t numMats, plane floor, const camera cam, vec3 * *fb, int nx, int ny);
 extern "C" void initHDRi(float* data, int x, int y, int n);
 extern "C" void runRenderer(int ns, int tx, int ty);
 extern "C" void cleanupRenderer();
@@ -62,7 +62,7 @@ vec3 hexColor(int hexValue) {
     return vec3(r, g, b) / 255.0;
 }
 
-bool setupScene(const char * filename, vec3 ** h_triangles, uint16_t &numTris, plane& floor) {
+bool setupScene(const char * filename, mesh& m, plane& floor) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -89,13 +89,15 @@ bool setupScene(const char * filename, vec3 ** h_triangles, uint16_t &numTris, p
         std::cerr << " colors size " << attrib.colors.size() << std::endl;
 
     // first count how many triangles we have
-    numTris = 0;
+    m.numTris = 0;
     for (auto s = 0; s < shapes.size(); s++) {
-        numTris += shapes[s].mesh.num_face_vertices.size();
+        m.numTris += shapes[s].mesh.num_face_vertices.size();
     }
 
+    bool first = true;
+
     // loop over shapes and copy all triangles to array
-    *h_triangles = new vec3[numTris * 3];
+    m.tris = new vec3[m.numTris * 3];
     uint16_t vec_index = 0;
     for (auto s = 0; s < shapes.size(); s++) {
         // loop over faces
@@ -112,7 +114,19 @@ bool setupScene(const char * filename, vec3 ** h_triangles, uint16_t &numTris, p
                 tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
-                (*h_triangles)[vec_index++] = vec3(vx, vy, vz);
+
+                vec3 tri(vx, vy, vz);
+                m.tris[vec_index++] = tri;
+
+                // update bounds
+                if (first) {
+                    first = false;
+                    m.bounds.min = tri;
+                    m.bounds.max = tri;
+                } else {
+                    m.bounds.min = min(m.bounds.min, tri);
+                    m.bounds.max = max(m.bounds.max, tri);
+                }
             }
             index_offset += 3;
         }
@@ -165,7 +179,7 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 1;
@@ -179,24 +193,24 @@ int main() {
     vec3 *fb;
     {
         plane floor;
-        vec3* triangles;
+        mesh m;
         material* materials;
-        uint16_t numTris;
         uint16_t numMats;
 #ifdef CUBE
-        if (!setupScene("D:\\models\\lowpoly\\cube.obj", &triangles, numTris, &materials, numMats, floor)) return -1;
+        if (!setupScene("D:\\models\\lowpoly\\cube.obj", m, floor)) return -1;
 #else
-        if (!setupScene("D:\\models\\lowpoly\\panter.obj", &triangles, numTris, floor)) return -1;
+        if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor)) return -1;
 #endif
-        std::cerr << " there are " << numTris << " triangles" << std::endl;
+        std::cerr << " there are " << m.numTris << " triangles" << std::endl;
+        std::cerr << " bbox.min " << m.bounds.min << "\nbbox.max " << m.bounds.max << std::endl;
 
         setupMaterials(&materials, numMats);
 
         camera cam = setup_camera(nx, ny);
 
         // setup floor
-        initRenderer(triangles, numTris, materials, numMats, floor, cam, &fb, nx, ny);
-        delete[] triangles;
+        initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny);
+        delete[] m.tris;
         delete[] materials;
 
         //loadHDRiEnvMap("lebombo_1k.hdr");

@@ -11,6 +11,24 @@ struct hit_record {
     int hitIdx;
 };
 
+__device__ bool hit_bbox(const bbox& bb, const ray& r, float t_max) {
+    float t_min = 0.001f;
+    for (int a = 0; a < 3; a++) {
+        float invD = 1.0f / r.direction()[a];
+        float t0 = (bb.min[a] - r.origin()[a]) * invD;
+        float t1 = (bb.max[a] - r.origin()[a]) * invD;
+        if (invD < 0.0f) {
+            float tmp = t0; t0 = t1; t1 = tmp;
+        }
+        t_min = t0 > t_min ? t0 : t_min;
+        t_max = t1 < t_max ? t1 : t_max;
+        if (t_max <= t_min)
+            return false;
+    }
+
+    return true;
+}
+
 __device__ bool planeHit(const plane& p, const ray& r, float t_min, float t_max, hit_record& rec) {
     float denom = dot(p.norm, r.direction());
 

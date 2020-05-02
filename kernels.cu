@@ -11,18 +11,22 @@ const int kMaxTris = 600;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 
 #ifdef STATS
-#define NUM_RAYS_PRIMARY            0
-#define NUM_RAYS_SECONDARY          1
-#define NUM_RAYS_SHADOWS            2
-#define NUM_RAYS_SHADOWS_NOHITS     3
-#define NUM_RAYS_LOW_POWER          4
-#define NUM_RAYS_PRIMARY_NOHITS     5
-#define NUM_RAYS_SIZE               6
+#define NUM_RAYS_PRIMARY                0
+#define NUM_RAYS_PRIMARY_NOHITS         1
+#define NUM_RAYS_PRIMARY_BBOX_NOHITS    2
+#define NUM_RAYS_SECONDARY              3
+#define NUM_RAYS_SECONDARY_BBOX_NOHIT   4
+#define NUM_RAYS_SHADOWS                5
+#define NUM_RAYS_SHADOWS_BBOX_NOHITS    6
+#define NUM_RAYS_SHADOWS_NOHITS         7
+#define NUM_RAYS_LOW_POWER              8
+#define NUM_RAYS_SIZE                   9
 #endif
 
 struct RenderContext {
     vec3* fb;
     uint16_t numTris;
+    bbox bounds;
     int nx;
     int ny;
     int ns;
@@ -38,12 +42,15 @@ struct RenderContext {
     }
     void printStats() const {
         std::cerr << "num rays:\n";
-        std::cerr << " primary:\t" << numRays[NUM_RAYS_PRIMARY] << std::endl;
-        std::cerr << " primary nohit:\t" << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
-        std::cerr << " secondary:\t" << numRays[NUM_RAYS_SECONDARY] << std::endl;
-        std::cerr << " shadows:\t" << numRays[NUM_RAYS_SHADOWS] << std::endl;
-        std::cerr << " shadows nohit:\t" << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
-        std::cerr << " power < 0.1:\t" << numRays[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " primary           : " << numRays[NUM_RAYS_PRIMARY] << std::endl;
+        std::cerr << " primary nohit     : " << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " primary bb nohit  : " << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
+        std::cerr << " secondary         : " << numRays[NUM_RAYS_SECONDARY] << std::endl;
+        std::cerr << " secondary bb nohit: " << numRays[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
+        std::cerr << " shadows           : " << numRays[NUM_RAYS_SHADOWS] << std::endl;
+        std::cerr << " shadows nohit     : " << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " shadows bb nohit  : " << numRays[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
+        std::cerr << " power < 0.1       : " << numRays[NUM_RAYS_LOW_POWER] << std::endl;
     }
 #else
     __device__ void rayStat(int type) const {}
@@ -66,22 +73,33 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool isShadow) {
+__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
+    bool bboxHit = hit_bbox(context.bounds, r, t_max);
+
     hit_record temp_rec;
     bool hit_anything = false;
     float closest_so_far = t_max;
-    for (int i = 0; i < context.numTris; i++) {
-        if (triangleHit(d_triangles + i * 3, r, t_min, closest_so_far, temp_rec)) {
-            if (isShadow) return true;
 
-            hit_anything = true;
-            closest_so_far = temp_rec.t;
-            rec = temp_rec;
+    // only traverse mesh if ray intersects mesh
+    if (bboxHit) {
+        for (int i = 0; i < context.numTris; i++) {
+            if (triangleHit(d_triangles + i * 3, r, t_min, closest_so_far, temp_rec)) {
+                if (isShadow) return true;
+
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
         }
-    }
-    if (hit_anything) {
-        rec.hitIdx = 0;
-        return true;
+
+        if (hit_anything) {
+            rec.hitIdx = 0;
+            return true;
+        }
+    } else {
+        if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
+        else if (primary) context.rayStat(NUM_RAYS_PRIMARY_BBOX_NOHITS);
+        else context.rayStat(NUM_RAYS_SECONDARY_BBOX_NOHIT);
     }
 
     if (planeHit(context.floor, r, t_min, t_max, temp_rec)) {
@@ -138,7 +156,7 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 
         hit_record rec;
-        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, false)) {
+        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, bounce == 0, false)) {
             if (bounce == 0 && rec.hitIdx == 1) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
 
             ray scattered;
@@ -154,7 +172,7 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
                 if (hasShadow && generateShadowRay(rec, shadow, emitted, state)) {
                     context.rayStat(NUM_RAYS_SHADOWS);
 
-                    if (!hit(shadow, context, 0.001f, FLT_MAX, rec, true)) {
+                    if (!hit(shadow, context, 0.001f, FLT_MAX, rec, bounce == 0, true)) {
                         context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
 
                         // intersection point is illuminated by the light
@@ -219,7 +237,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
@@ -233,8 +251,9 @@ initRenderer(const vec3 *h_triangles, uint16_t numTris, material* h_materials, u
     checkCudaErrors(cudaMemcpy(renderContext.materials, h_materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
     renderContext.numMats = numMats;
 
-    checkCudaErrors(cudaMemcpyToSymbol(d_triangles, h_triangles, numTris * 3 * sizeof(vec3)));
-    renderContext.numTris = numTris;
+    checkCudaErrors(cudaMemcpyToSymbol(d_triangles, m.tris, m.numTris * 3 * sizeof(vec3)));
+    renderContext.numTris = m.numTris;
+    renderContext.bounds = m.bounds;
 
     renderContext.cam = cam;
 #ifdef STATS

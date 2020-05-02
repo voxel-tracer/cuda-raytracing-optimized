@@ -3,6 +3,23 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
+struct bbox {
+    vec3 min;
+    vec3 max;
+
+    bbox() {}
+    bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
+};
+
+struct mesh {
+    vec3* tris;
+    uint16_t numTris;
+    bbox bounds;
+
+    mesh() {}
+    mesh(vec3* _tris, uint16_t _numTris, bbox _bounds) :tris(_tris), numTris(_numTris), bounds(_bounds) {}
+};
+
 struct plane {
     vec3 norm;
     vec3 point; // point in the plane
