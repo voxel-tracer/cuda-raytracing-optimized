@@ -60,32 +60,22 @@ FEATURES
 - resume rendering from saved file (useful when we want to add more samples to an already expensive render)
 - can we preprocess the triangles to identify the ones that don't face any other triangle from the model ?
  . we could use this to quickly identify no_hits for secondary rays
-
+- Gimp "White Balance" improves the quality of the final renderer
+ . can I implement the same strategy in my renderer ?
 ---------------------------------------------------------------------------------------------------------
-PHASE I: POLYGON RENDERER
+PHASE I.1: POLYGON RENDERER
 ---------------------------------------------------------------------------------------------------------
  REQUIREMENTS
  ------------
-- support large triangle mesh .obj models
+- support triangle mesh .obj models that fit in constant memory
 - support a few interesting materials that produce great renderers
  . DONE tinted glass with Beer-lambert model
- . Peter Shirley's brute force subsurface scattering
- . also see this answer that goes into a lot of details about SSS: https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
  . DONE existing plastic/coat (diffuse + glass)
 - DONE basic lighting and background setup that produces great renderers
 
  DELIVERABLES
  ------------
 - great looking renders that may be too slow to renderer
-
-* at this point I should have great looking renderer that are too slow
- . now I can start optimizing the renderer as much as possible
-
-* once the renderer is fast enough I can add support for an OpenGL viewer
- . this will showcase how quickly can my renderer produce interesting images
-
-* I can also integrate my work in Lighthouse 2 as a separate CUDA core
- . this will allow me quickly add support for UI and models/materials and interesting scenes
 
  TASKS
  -----
@@ -110,22 +100,72 @@ PHASE I: POLYGON RENDERER
   . compute transmission = exp(-absorptionCoefficient * hit.t)
   . attentuation *= transmission
 
-----------------------------------------------------------------------------------------------------------
-NOTES
-----------------------------------------------------------------------------------------------------------
-STATS FOR TINTED GLASS ON COAT w/ 1024spp
-
-primary:          983.040.000
-primary(nohit):   747.703.389
-secondary:      1.965.692.427
-shadows:          851.167.283
-power < 0.1:      369.910.132
-
-same stats for 4096spp
+ NOTES
+ -----
+- stats for tinted glass on coat w 4096spp
 primary:        3.932.160.000
 primary(nohit): 2.990.816.128
 secondary:      3.567.756.802
 shadows:        3.404.672.183
-power < 0.1:    1.479.651.414
+power < 0.01:   1.479.651.414
+
+- 76% of all primary rays are nohit
+ . those rays are not contributing to the final image, if we remove them we could speedup the renderer
+ . this will also help for shadow rays
+ . using bounding box for the whole model (excluding the floor) should help
+ . we could also discard pixels when N samples didn't hit the model (only works for primary rays)
+- 19% of all rays have an intensity < 1%
+ . those rays aren't contributing much and we should be able to trim them
+ . russian roulette should help here
+ . I may need to compute RMSE with a reference image to track quality loss this introduces
+
+ NEXT (move these to their own steps later)
+ ----
+- apply basic optimizations from my previous work to speedup the rendering a bit
+ . we should expect very good speedup with not much effort
+- add subsurface-scattering material
+- add OpenGL/imGUI viewer (from my spheres renderer)
+ . quickly configure the scene to get high quality renderers
+- Subsurface scattering material
+ . https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
+
+----------------------------------------------------------------------------------------------------------
+PHASE I.2 BASIC OPTIMIZATIONS
+----------------------------------------------------------------------------------------------------------
+- use the ray stats I collected and identify strategies to reduce total number of traced rays
+- apply optimization strategies from my previous work without introducing a full BVH
+- target 20x speedup => tinted on coat w 4096spp should render in < 1mn (vs +20mn now)
+- do not worry about good design as we are mostly interested by the performance of the renderer
+ 
+ DELIVERABLES
+ ------------
+- Fast renderer that can be extended with more expensive materials
+ . Render tinted on coat w 4096spp < 1mn
+
+ TASKS
+ -----
+- handle floor as proper infinite plane in kernel
+ . just pass it's normal and elevation on that normal and its material
+ . this will simplify handling all triangles as a single mesh
+- compute bounding box for the mesh and use it to quickly discard rays
+  this can provide up to 4x speedup (less most likely)
+- if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
+  this should bring speedup to 4x
+ . start by measuring how many rays are affected by this and only work on it if it has good potential
+- build a simplified grid acceleration structure
+  for N^3 grid rays will at most traverse 3N => 
+  N=2 => 4x
+  N=4 => 5x
+  N=8 => 20x
+- [optional] use russian roulette to stop tracing low intensity paths
+  https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
+  user defines number of bounces before we start applying RR = RR_start_bounce
+  this can provide a 20% speedup and even more considering those bounces are most likely with high divergence
+ . implement RMSE to measure quality loss for various RR_start_bounce
+   https://jacco.ompf2.com/2020/04/07/speeding-up-lighthouse-2/
+- [optional] preprocess the triangles and identify the ones that don't face any other triangle from the mesh
+ . those triangles are guaranteed to not hit anything for their shadow and scattered rays (except floor for scattered rays)
+ . depends on how many triangles have this property
+- use meshLab to simplify more complex models and render them
 
 ----------------------------------------------------------------------------------------------------------
