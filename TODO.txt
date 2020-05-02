@@ -144,7 +144,7 @@ PHASE I.2 BASIC OPTIMIZATIONS
 
  TASKS
  -----
-- handle floor as proper infinite plane in kernel
+- DONE handle floor as proper infinite plane in kernel
  . just pass it's normal and elevation on that normal and its material
  . this will simplify handling all triangles as a single mesh
 - compute bounding box for the mesh and use it to quickly discard rays

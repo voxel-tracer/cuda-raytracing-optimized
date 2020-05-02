@@ -14,9 +14,10 @@ __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 #define NUM_RAYS_PRIMARY            0
 #define NUM_RAYS_SECONDARY          1
 #define NUM_RAYS_SHADOWS            2
-#define NUM_RAYS_LOW_POWER          3
-#define NUM_RAYS_PRIMARY_NO_HITS    4
-#define NUM_RAYS_SIZE               5
+#define NUM_RAYS_SHADOWS_NOHITS     3
+#define NUM_RAYS_LOW_POWER          4
+#define NUM_RAYS_PRIMARY_NOHITS     5
+#define NUM_RAYS_SIZE               6
 #endif
 
 struct RenderContext {
@@ -32,6 +33,21 @@ struct RenderContext {
     plane floor;
 #ifdef STATS
     uint32_t* numRays;
+    __device__ void rayStat(int type) const {
+        atomicAdd(numRays + type, 1);
+    }
+    void printStats() const {
+        std::cerr << "num rays:\n";
+        std::cerr << " primary:\t" << numRays[NUM_RAYS_PRIMARY] << std::endl;
+        std::cerr << " primary nohit:\t" << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " secondary:\t" << numRays[NUM_RAYS_SECONDARY] << std::endl;
+        std::cerr << " shadows:\t" << numRays[NUM_RAYS_SHADOWS] << std::endl;
+        std::cerr << " shadows nohit:\t" << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " power < 0.1:\t" << numRays[NUM_RAYS_LOW_POWER] << std::endl;
+    }
+#else
+    __device__ void rayStat(int type) const {}
+    void printStats() const {}
 #endif
 };
 
@@ -117,20 +133,14 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     vec3 curColor = vec3(0, 0, 0);
     for (int bounce = 0; bounce < 50; bounce++) {
-#ifdef STATS
-        if (bounce == 0)
-            atomicAdd(context.numRays + NUM_RAYS_PRIMARY, 1);
-        else
-            atomicAdd(context.numRays + NUM_RAYS_SECONDARY, 1);
-        if (cur_attenuation.length() < 0.01f)
-            atomicAdd(context.numRays + NUM_RAYS_LOW_POWER, 1);
-#endif
+        if (bounce == 0) context.rayStat(NUM_RAYS_PRIMARY);
+        else context.rayStat(NUM_RAYS_SECONDARY);
+        if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
+
         hit_record rec;
         if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, false)) {
-#ifdef STATS
-            if (bounce == 0 && rec.hitIdx == 1) // primary ray hit didn't hit the main model
-                atomicAdd(context.numRays + NUM_RAYS_PRIMARY_NO_HITS, 1);
-#endif
+            if (bounce == 0 && rec.hitIdx == 1) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
+
             ray scattered;
             vec3 attenuation;
             bool hasShadow;
@@ -142,10 +152,11 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
                 ray shadow;
                 vec3 emitted;
                 if (hasShadow && generateShadowRay(rec, shadow, emitted, state)) {
-#ifdef STATS
-                    atomicAdd(context.numRays + NUM_RAYS_SHADOWS, 1);
-#endif
+                    context.rayStat(NUM_RAYS_SHADOWS);
+
                     if (!hit(shadow, context, 0.001f, FLT_MAX, rec, true)) {
+                        context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
+
                         // intersection point is illuminated by the light
                         curColor += emitted * cur_attenuation;
                     }
@@ -156,10 +167,8 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
             }
         }
         else {
-#ifdef STATS
-            if (bounce == 0) // primary ray hit didn't hit anything
-                atomicAdd(context.numRays + NUM_RAYS_PRIMARY_NO_HITS, 1);
-#endif
+            if (bounce == 0) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
+
             if (context.hdri != NULL) {
                 // environment map
                 vec3 dir = unit_vector(cur_ray.direction());
@@ -250,14 +259,8 @@ runRenderer(int ns, int tx, int ty) {
     render <<<blocks, threads >>> (renderContext);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
-#ifdef STATS
-    std::cerr << "num rays:\n";
-    std::cerr << "\tprimary:\t" << renderContext.numRays[NUM_RAYS_PRIMARY] << std::endl;
-    std::cerr << "\tprimary (no hit):\t" << renderContext.numRays[NUM_RAYS_PRIMARY_NO_HITS] << std::endl;
-    std::cerr << "\tsecondary:\t" << renderContext.numRays[NUM_RAYS_SECONDARY] << std::endl;
-    std::cerr << "\tshadows:\t" << renderContext.numRays[NUM_RAYS_SHADOWS] << std::endl;
-    std::cerr << "\tpower < 0.1:\t" << renderContext.numRays[NUM_RAYS_LOW_POWER] << std::endl;
-#endif
+
+    renderContext.printStats();
 }
 
 extern "C" void
