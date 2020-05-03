@@ -40,6 +40,8 @@ FEATURES
  . this will be useful when building my own rendering/material tool
 - integrate with Lighthouse 2
  . we get a model loader/viewer for free
+ . we get PBRT scenes loading for free
+ . we get a lots of physically-based materials for free
  . we can compare performance of my renderer vs others
  . this is useful when I just want to focus on the render core and optimize it
 - advanced materials: implement Disney BRDF and add UI to configure materials
@@ -80,44 +82,9 @@ PHASE I.1: POLYGON RENDERER
  TASKS
  -----
  - DONE render obj model
-  . DONE load obj as triangle list
-  . DONE copy triangles to constant memory
-    . constant mem size = 65536B, each triangle uses 3 vec3 = 3x3x float = 3x3x4B = 36B => we can store 1280 tris
-  . DONE ray-triangle intersection with a single material
 - DONE floor
-  . DONE use 2 triangles to represent the floor
-  . DONE make it big enough to catch any shadows
-  . DONE use coat material
 - DONE light and next event estimation
- . DONE extend scatter() to update a hasShadow
- . DONE color() compute shadowRay if hasShadow
- . DONE hit() has a isShadow that will stop at first intersection
- . DONE color() accounts for light emissiviness if hasShadow and no shadow hit
 - DONE Lambert-Beer absorption
- . DONE GLASS material (vec3 absorptionColor, float absorptionDistance)
-  . absorptionCoefficient = -log(absorptionColor) / absorptionDistance
- . DONE when ray exits the model (frontFace = false), hit.t represents the distance travelled inside the model
-  . compute transmission = exp(-absorptionCoefficient * hit.t)
-  . attentuation *= transmission
-
- NOTES
- -----
-- stats for tinted glass on coat w 4096spp
-primary:        3.932.160.000
-primary(nohit): 2.990.816.128
-secondary:      3.567.756.802
-shadows:        3.404.672.183
-power < 0.01:   1.479.651.414
-
-- 76% of all primary rays are nohit
- . those rays are not contributing to the final image, if we remove them we could speedup the renderer
- . this will also help for shadow rays
- . using bounding box for the whole model (excluding the floor) should help
- . we could also discard pixels when N samples didn't hit the model (only works for primary rays)
-- 19% of all rays have an intensity < 1%
- . those rays aren't contributing much and we should be able to trim them
- . russian roulette should help here
- . I may need to compute RMSE with a reference image to track quality loss this introduces
 
  NEXT (move these to their own steps later)
  ----
@@ -129,6 +96,9 @@ power < 0.01:   1.479.651.414
 - Subsurface scattering material
  . https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
 
+ PERF
+ ----
+- tinted-glass on coat 1200x800x4096 in 1045s (17m45s)
 ----------------------------------------------------------------------------------------------------------
 PHASE I.2 BASIC OPTIMIZATIONS
 ----------------------------------------------------------------------------------------------------------
@@ -139,20 +109,17 @@ PHASE I.2 BASIC OPTIMIZATIONS
  
  DELIVERABLES
  ------------
-- Fast renderer that can be extended with more expensive materials
- . Render tinted on coat w 4096spp < 1mn
+- Fast renderer that can be extended with more expensive materials (in phase 1.3)  and larger models (in phase 2)
+  Render tinted-glass on coat w 4096spp < 1mn
 
  TASKS
  -----
 - DONE handle floor as proper infinite plane in kernel
- . just pass it's normal and elevation on that normal and its material
- . this will simplify handling all triangles as a single mesh
 - DONE compute bounding box for the mesh and use it to quickly discard rays
-  25% speedup
+  PERF: 1045s (17m45s) > 757s (12m37s) = 25% speedup
 - DONE measue how many secondary rays are from the mesh
 - DONE measure how many secondary rays are nohit
 - DONE if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
-  this should bring speedup to 4x
   in total we pruned 2.7B rays but 2.2B of those rays were bb nohit anyway so not much performance gain
 - build a simplified grid acceleration structure
   for N^3 grid rays will at most traverse 3N => 
@@ -165,9 +132,16 @@ PHASE I.2 BASIC OPTIMIZATIONS
   this can provide a 20% speedup and even more considering those bounces are most likely with high divergence
  . implement RMSE to measure quality loss for various RR_start_bounce
    https://jacco.ompf2.com/2020/04/07/speeding-up-lighthouse-2/
-- [optional] preprocess the triangles and identify the ones that don't face any other triangle from the mesh
+- NOPE [optional] preprocess the triangles and identify the ones that don't face any other triangle from the mesh
  . those triangles are guaranteed to not hit anything for their shadow and scattered rays (except floor for scattered rays)
  . depends on how many triangles have this property
-- use meshLab to simplify more complex models and render them
+ . stats show that only 16% of all secondary rays don't hit the mesh => that's the most we can hope to optimize away (not worth it)
+- [extra] use meshLab to simplify more complex models and render them
 
+----------------------------------------------------------------------------------------------------------
+PHASE I.3 SUBSURFACE SCATTERING
+----------------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------------
+PHASE II
 ----------------------------------------------------------------------------------------------------------

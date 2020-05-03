@@ -20,7 +20,7 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-const int kMaxTris = 600;
+const int kMaxTris = 1000;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
 
 #ifdef STATS
