@@ -64,6 +64,7 @@ FEATURES
  . we could use this to quickly identify no_hits for secondary rays
 - Gimp "White Balance" improves the quality of the final renderer
  . can I implement the same strategy in my renderer ?
+- all rendering params are configurables from a simple test file. Create a separate file per test scene
 ---------------------------------------------------------------------------------------------------------
 PHASE I.1: POLYGON RENDERER
 ---------------------------------------------------------------------------------------------------------
@@ -121,11 +122,16 @@ PHASE I.2 BASIC OPTIMIZATIONS
 - DONE measure how many secondary rays are nohit
 - DONE if N samples of same pixel didn't hit the model then remaining samples should just intersect the floor
   in total we pruned 2.7B rays but 2.2B of those rays were bb nohit anyway so not much performance gain
-- build a simplified grid acceleration structure
+- DONE build a simplified grid acceleration structure
   for N^3 grid rays will at most traverse 3N => 
   N=2 => 4x
   N=4 => 5x
   N=8 => 20x
+  PERF 757s > 531s (8m51s) = 30% speedup
+- investigate perf bottlenecks of grid (suspect its too much memory access)
+- copy grid to constant memory
+- copy triangles to global memory then texture memory
+  given that we access them randomly they many not benefit from constant mem
 - [optional] use russian roulette to stop tracing low intensity paths
   https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
   user defines number of bounces before we start applying RR = RR_start_bounce
