@@ -43,6 +43,7 @@ struct RenderContext {
     vec3* fb;
     uint16_t numTris;
     bbox bounds;
+    grid g;
     int nx;
     int ny;
     int ns;
@@ -276,6 +277,12 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
     renderContext.numTris = m.numTris;
     renderContext.bounds = m.bounds;
 
+    // copy grid to gpu
+    renderContext.g.size = m.g.size;
+    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.C, m.g.sizeC()));
+    memcpy(renderContext.g.C, m.g.C, m.g.sizeC());
+    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.L, m.g.sizeL()));
+    memcpy(renderContext.g.L, m.g.L, m.g.sizeL());
     renderContext.cam = cam;
 
     renderContext.initStats();

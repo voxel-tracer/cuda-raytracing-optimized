@@ -131,8 +131,8 @@ void buildGrid(mesh& m, float cellSize) {
         if (C[i + 1] == C[i]) numEmpty++;
     }
 
-    std::cerr << "grid C size = " << N + 1 << std::endl;
-    std::cerr << "grid L size = " << C[N] << std::endl;
+    std::cerr << "grid C size = " << m.g.sizeC() << std::endl;
+    std::cerr << "grid L size = " << m.g.sizeL() << std::endl;
     std::cerr << "num empty cells = " << numEmpty << std::endl;
 }
 

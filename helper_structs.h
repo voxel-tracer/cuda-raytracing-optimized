@@ -15,6 +15,13 @@ struct grid {
     vec3 size;
     uint16_t* C; // C[i] start index of this cell's triangles in L
     uint16_t* L; // triangles indices for all cells
+
+    __host__ __device__ uint16_t sizeC() const {
+        return size.x() * size.y() * size.z() + 1;
+    }
+    __host__ __device__ uint16_t sizeL() const {
+        return C[sizeC() - 1];
+    }
 };
 
 struct mesh {
