@@ -85,38 +85,52 @@ struct RenderContext {
 
 RenderContext renderContext;
 
-__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
-    bool bboxHit = hit_bbox(context.bounds, r, t_max);
-
-    hit_record temp_rec;
-    bool hit_anything = false;
-    float closest_so_far = t_max;
-
-    // only traverse mesh if ray intersects mesh
-    if (bboxHit) {
-        for (int i = 0; i < context.numTris; i++) {
-            if (triangleHit(d_triangles + i * 3, r, t_min, closest_so_far, temp_rec)) {
-                if (isShadow) return true;
-
-                hit_anything = true;
-                closest_so_far = temp_rec.t;
-                rec = temp_rec;
-            }
-        }
-
-        if (hit_anything) {
-            rec.hitIdx = 0;
-            return true;
-        }
-    } else {
+__device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
+    if (!hit_bbox(context.bounds, r, t_max)) {
 #ifdef STATS
         if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
 #endif
+        return false;
     }
 
-    if (planeHit(context.floor, r, t_min, t_max, temp_rec)) {
-        rec = temp_rec;
+    bool hit_anything = false;
+    float closest_so_far = t_max;
+
+    // loop through grid cells
+    const grid& g = context.g;
+    for (uint16_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
+        for (uint16_t cy = 0; cy < g.size.y(); cy++) {
+            for (uint16_t cx = 0; cx < g.size.x(); cx++, ci++) {
+                if (g.C[ci] == g.C[ci + 1]) continue; // empty cell
+                // check if ray intersects cell bounds
+                bbox cbounds(
+                    vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
+                    vec3(cx + 1, cy + 1, cz + 1) * g.cellSize + context.bounds.min
+                );
+                if (!hit_bbox(cbounds, r, closest_so_far)) continue; // ray doesn't intersect with cell's bounds
+
+                // loop through cell's triangles
+                for (uint16_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
+                    if (triangleHit(d_triangles + g.L[idx] * 3, r, t_min, closest_so_far, rec)) {
+                        if (isShadow) return true;
+
+                        hit_anything = true;
+                        closest_so_far = rec.t;
+                    }
+                }
+            }
+        }
+    }
+
+    return hit_anything;
+}
+
+__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
+    if (hitMesh(r, context, t_min, t_max, rec, primary, isShadow)) {
+        rec.hitIdx = 0;
+        return true;
+    } else if (planeHit(context.floor, r, t_min, t_max, rec)) {
         rec.hitIdx = 1;
         return true;
     }
@@ -278,11 +292,11 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
     renderContext.bounds = m.bounds;
 
     // copy grid to gpu
-    renderContext.g.size = m.g.size;
-    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.C, m.g.sizeC()));
-    memcpy(renderContext.g.C, m.g.C, m.g.sizeC());
-    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.L, m.g.sizeL()));
-    memcpy(renderContext.g.L, m.g.L, m.g.sizeL());
+    renderContext.g = m.g;
+    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint16_t)));
+    memcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint16_t));
+    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint16_t)));
+    memcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint16_t));
     renderContext.cam = cam;
 
     renderContext.initStats();

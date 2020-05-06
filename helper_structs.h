@@ -8,11 +8,12 @@ struct bbox {
     vec3 max;
 
     bbox() {}
-    bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
+    __host__ __device__ bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
 };
 
 struct grid {
     vec3 size;
+    float cellSize;
     uint16_t* C; // C[i] start index of this cell's triangles in L
     uint16_t* L; // triangles indices for all cells
 

@@ -76,13 +76,15 @@ void buildGrid(mesh& m, float cellSize) {
 
     // loop over all triangles and add them to the corresponding cells
     for (auto i = 0; i < m.numTris; i++) {
-        // compute cell coordinates of each vertex
-        vec3 g1 = floor((m.tris[i * 3] - m.bounds.min) / cellSize);
-        vec3 g2 = floor((m.tris[i * 3 + 1] - m.bounds.min) / cellSize);
-        vec3 g3 = floor((m.tris[i * 3 + 2] - m.bounds.min) / cellSize);
+        // compute triangle bbox
+        vec3 p1 = m.tris[i * 3];
+        vec3 p2 = m.tris[i * 3 + 1];
+        vec3 p3 = m.tris[i * 3 + 2];
+        vec3 bmin = min(p1, min(p2, p3));
+        vec3 bmax = max(p1, max(p2, p3));
 
-        vec3 gmin = min(g1, min(g2, g3));
-        vec3 gmax = max(g1, max(g2, g3));
+        vec3 gmin = floor((bmin - m.bounds.min) / cellSize);
+        vec3 gmax = floor((bmax - m.bounds.min) / cellSize);
 
         for (int x = gmin.x(); x <= gmax.x(); x++) {
             for (int y = gmin.y(); y <= gmax.y(); y++) {
@@ -115,13 +117,16 @@ void buildGrid(mesh& m, float cellSize) {
 
     // now let's build L
     uint16_t* L = new uint16_t[C[N]];
-    for (uint16_t i = 0, idx = 0; i < N; i++) {
+    uint16_t idx = 0;
+    for (uint16_t i = 0; i < N; i++) {
         for (uint16_t j = 0; j < cells[i].size(); j++) {
             L[idx++] = cells[i][j];
         }
     }
+    std::cerr << "check: " << idx << " == " << C[N] << std::endl;
 
     m.g.size = gridSize;
+    m.g.cellSize = cellSize;
     m.g.C = C;
     m.g.L = L;
 
@@ -253,7 +258,7 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 1;
@@ -279,7 +284,7 @@ int main() {
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
-        buildGrid(m, 5);
+        buildGrid(m, 20);
         setupMaterials(&materials, numMats);
 
         camera cam = setup_camera(nx, ny);
