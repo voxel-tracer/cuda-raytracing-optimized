@@ -62,6 +62,80 @@ vec3 hexColor(int hexValue) {
     return vec3(r, g, b) / 255.0;
 }
 
+void buildGrid(mesh& m, float cellSize) {
+    // compute grid size in cells
+    vec3 gridSize = ceil((m.bounds.max - m.bounds.min) / cellSize);
+    std::cerr << "grid size = " << gridSize << std::endl;
+
+    const uint16_t N = gridSize.x() * gridSize.y() * gridSize.z();
+    std::vector<std::vector<uint16_t>> cells;
+    for (auto i = 0; i < N; i++) {
+        std::vector<uint16_t> v;
+        cells.push_back(v);
+    }
+
+    // loop over all triangles and add them to the corresponding cells
+    for (auto i = 0; i < m.numTris; i++) {
+        // compute cell coordinates of each vertex
+        vec3 g1 = floor((m.tris[i * 3] - m.bounds.min) / cellSize);
+        vec3 g2 = floor((m.tris[i * 3 + 1] - m.bounds.min) / cellSize);
+        vec3 g3 = floor((m.tris[i * 3 + 2] - m.bounds.min) / cellSize);
+
+        vec3 gmin = min(g1, min(g2, g3));
+        vec3 gmax = max(g1, max(g2, g3));
+
+        for (int x = gmin.x(); x <= gmax.x(); x++) {
+            for (int y = gmin.y(); y <= gmax.y(); y++) {
+                for (int z = gmin.z(); z <= gmax.z(); z++) {
+                    // compute cell coordinate
+                    uint16_t cellIdx = z * gridSize.x() * gridSize.y() + y * gridSize.x() + x;
+                    cells[cellIdx].push_back(i);
+                }
+            }
+        }    
+    }
+
+    // now that we constructed cells, we need to convert it to two arrays:
+    // L[] contains all triangles indices for all cells in a linear order
+    // C[] start index in L[] for each cell
+
+    // let's start with C, N being the total number of cells in the grid, C has a size of N+1
+    // C[i] will contain the start index of cell i, so triangles of cell i are between C[i] and C[i+1] exclusive
+    uint16_t* C = new uint16_t[N + 1];
+    // count num tris in each cell
+    for (auto i = 0; i < N; i++)
+        C[i] = cells[i].size();
+    // compute end index of each cell
+    for (auto i = 0; i < N; i++)
+        C[i + 1] += C[i];
+    // compute start index by shifting cells to the right
+    for (auto i = N; i > 0; i--)
+        C[i] = C[i - 1];
+    C[0] = 0;
+
+    // now let's build L
+    uint16_t* L = new uint16_t[C[N]];
+    for (uint16_t i = 0, idx = 0; i < N; i++) {
+        for (uint16_t j = 0; j < cells[i].size(); j++) {
+            L[idx++] = cells[i][j];
+        }
+    }
+
+    m.g.size = gridSize;
+    m.g.C = C;
+    m.g.L = L;
+
+    // display some stats
+    uint16_t numEmpty = 0;
+    for (auto i = 0; i < N; i++) {
+        if (C[i + 1] == C[i]) numEmpty++;
+    }
+
+    std::cerr << "grid C size = " << N + 1 << std::endl;
+    std::cerr << "grid L size = " << C[N] << std::endl;
+    std::cerr << "num empty cells = " << numEmpty << std::endl;
+}
+
 bool setupScene(const char * filename, mesh& m, plane& floor) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -179,7 +253,7 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 1;
@@ -205,6 +279,7 @@ int main() {
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
+        buildGrid(m, 5);
         setupMaterials(&materials, numMats);
 
         camera cam = setup_camera(nx, ny);
@@ -212,6 +287,8 @@ int main() {
         // setup floor
         initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny);
         delete[] m.tris;
+        delete[] m.g.C;
+        delete[] m.g.L;
         delete[] materials;
 
         //loadHDRiEnvMap("lebombo_1k.hdr");

@@ -11,10 +11,18 @@ struct bbox {
     bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
 };
 
+struct grid {
+    vec3 size;
+    uint16_t* C; // C[i] start index of this cell's triangles in L
+    uint16_t* L; // triangles indices for all cells
+};
+
 struct mesh {
     vec3* tris;
     uint16_t numTris;
     bbox bounds;
+
+    grid g;
 
     mesh() {}
     mesh(vec3* _tris, uint16_t _numTris, bbox _bounds) :tris(_tris), numTris(_numTris), bounds(_bounds) {}

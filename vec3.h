@@ -126,6 +126,14 @@ __host__ __device__ inline vec3 max(const vec3& v1, const vec3& v2) {
     );
 }
 
+__host__ __device__ inline vec3 ceil(const vec3& v) {
+    return vec3(ceilf(v.x()), ceilf(v.y()), ceilf(v.z()));
+}
+
+__host__ __device__ inline vec3 floor(const vec3& v) {
+    return vec3(floorf(v.x()), floorf(v.y()), floorf(v.z()));
+}
+
 __host__ __device__ inline vec3& vec3::operator+=(const vec3 &v){
     e[0]  += v.e[0];
     e[1]  += v.e[1];
