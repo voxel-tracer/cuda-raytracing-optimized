@@ -21,7 +21,11 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 }
 
 const int kMaxTris = 1000;
+const int kMaxC = 1100;
+const int kMaxL = 3600;
 __device__ __constant__ vec3 d_triangles[kMaxTris * 3];
+__device__ __constant__ uint16_t d_gridC[kMaxC];
+__device__ __constant__ uint16_t d_gridL[kMaxL];
 
 #ifdef STATS
 #define NUM_RAYS_PRIMARY                0
@@ -102,7 +106,7 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
     for (uint16_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
         for (uint16_t cy = 0; cy < g.size.y(); cy++) {
             for (uint16_t cx = 0; cx < g.size.x(); cx++, ci++) {
-                if (g.C[ci] == g.C[ci + 1]) continue; // empty cell
+                if (d_gridC[ci] == d_gridC[ci + 1]) continue; // empty cell
                 // check if ray intersects cell bounds
                 bbox cbounds(
                     vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
@@ -111,8 +115,8 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
                 if (!hit_bbox(cbounds, r, closest_so_far)) continue; // ray doesn't intersect with cell's bounds
 
                 // loop through cell's triangles
-                for (uint16_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
-                    if (triangleHit(d_triangles + g.L[idx] * 3, r, t_min, closest_so_far, rec)) {
+                for (uint16_t idx = d_gridC[ci]; idx < d_gridC[ci + 1]; idx++) {
+                    if (triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, closest_so_far, rec)) {
                         if (isShadow) return true;
 
                         hit_anything = true;
@@ -293,10 +297,8 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
 
     // copy grid to gpu
     renderContext.g = m.g;
-    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint16_t)));
-    memcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint16_t));
-    checkCudaErrors(cudaMallocManaged((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint16_t)));
-    memcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint16_t));
+    checkCudaErrors(cudaMemcpyToSymbol(d_gridC, m.g.C, m.g.sizeC() * sizeof(uint16_t)));
+    checkCudaErrors(cudaMemcpyToSymbol(d_gridL, m.g.L, m.g.sizeL() * sizeof(uint16_t)));
     renderContext.cam = cam;
 
     renderContext.initStats();

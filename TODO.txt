@@ -113,6 +113,10 @@ PHASE I.2 BASIC OPTIMIZATIONS
 - Fast renderer that can be extended with more expensive materials (in phase 1.3)  and larger models (in phase 2)
   Render tinted-glass on coat w 4096spp < 1mn
 
+ PROGRESS
+ --------
+ 1045s (17m45s) > 757s (12m37s) > 531s (8m51s) > 395s (6m35s)
+
  TASKS
  -----
 - DONE handle floor as proper infinite plane in kernel
@@ -124,13 +128,16 @@ PHASE I.2 BASIC OPTIMIZATIONS
   in total we pruned 2.7B rays but 2.2B of those rays were bb nohit anyway so not much performance gain
 - DONE build a simplified grid acceleration structure
   for N^3 grid rays will at most traverse 3N => 
-  N=2 => 4x
-  N=4 => 5x
-  N=8 => 20x
+  N=2 => 4x, N=4 => 5x, N=8 => 20x
   PERF 757s > 531s (8m51s) = 30% speedup
-- investigate perf bottlenecks of grid (suspect its too much memory access)
-- copy grid to constant memory
-- copy triangles to global memory then texture memory
+- DONE investigate perf bottlenecks of grid (suspect its too much memory access)
+ . increased register count => less occupancy
+ . reduced warp efficiency
+ . increase memory reads
+- DONE copy grid to constant memory
+  PERF 531s > 395s (6m35s)
+- analyse perf bottlenecks
+- [optional] copy triangles to global memory then texture memory
   given that we access them randomly they many not benefit from constant mem
 - [optional] use russian roulette to stop tracing low intensity paths
   https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering

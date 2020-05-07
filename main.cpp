@@ -261,7 +261,7 @@ int main() {
     bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 40 : 4096) : 1;
+    int ns = !perf ? (fast ? 40 : 4096) : 4;
     int tx = 8;
     int ty = 8;
 
@@ -284,7 +284,7 @@ int main() {
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
-        buildGrid(m, 20);
+        buildGrid(m, 10);
         setupMaterials(&materials, numMats);
 
         camera cam = setup_camera(nx, ny);
