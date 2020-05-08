@@ -1,0 +1,135 @@
+PHASE I.1
+---------
+
+coat on coat 1200x800x4096
+
+num rays:
+ primary:        3.932.160.000
+ primary nohit:  2.990.817.867
+ secondary:      1.164.860.273
+ shadows:        3.874.489.996
+ power < 0.01      777.482.122
+took 1116.88 seconds.
+
+tinted glass on coat 1200x800x4096
+
+num rays:
+ primary:       3.932.160.000
+ primary nohit: 2.990.815.690
+ secondary:     3.582.725.465
+ shadows:       3.407.333.793
+ shadows nohit: 2.836.615.599
+ power < 0.01:  1.485.850.614
+took 1045.88 seconds.
+
+- given that we traverse all triangles, nohit rays are the most expensive
+- 76% of all primary rays are nohit
+- 83% of all shadow rays are nohit
+- 19% of all rays have intensity < 1%
+
+-------------------------------------------------------------------------------------
+PHASE I.2
+---------
+
+ MESH BBOX (1045s > 757s)
+ ---------
+
+num rays:
+ primary             : 3.932.160.000
+ primary nohit       : 2.990.815.695 (76% of primary)
+ primary bb nohit    : 1.742.724.149 (44% of primary)
+ secondary           : 7.877.692.712 (200% of primary)
+ secondary no hit    : 3.290.323.148 (42% of secondary)
+ secondary bb nohit  : 2.788.640.561 (35% of secondary)
+ secondary mesh      : 4.014.345.511 (50% of secondary)
+ secondary mesh nohit:   641.836.422 (16% of secondary mesh)
+ shadows             : 3.407.333.797
+ shadows nohit       : 2.836.615.599 (83% of shadows)
+ shadows bb nohit    : 2.349.059.778 (69% of shadows)
+ power < 0.01        : 1.485.850.611
+took 756.877 seconds.
+
+ PRUNE PIXELS THAT DON'T INTERSECT MESH
+ --------------------------------------
+ primary             : 3,932,160,000
+ primary nohit       : 2,990,823,552
+ primary bb nohit    :   857,644,258
+ secondary           : 7,853,742,117
+ secondary no hit    : 3,298,552,837
+ secondary bb nohit  : 1,470,254,530
+ secondary mesh      : 3,991,612,560
+ secondary mesh nohit:   633,606,733
+ shadows             : 3,406,409,916
+ shadows nohit       : 2,835,735,688
+ shadows bb nohit    : 2,348,226,897
+ pruned              : 2,700,481,076
+ power < 0.1         : 1,478,241,208
+ 
+ - 2.7B rays were pruned (only need to intersect plane)
+ - primary bb nohit had 885K less rays (most likely were pruned)
+ - secondary bb nohit had 1.3B less rays (most likely were pruned)
+ - so in total we pruned 2.7B rays but 2.2B of those rays were bb nohit anyway
+   so not a lot of saved traversal
+
+ GRID STORED IN GLOBAL MEMORY (757s > 532s)
+ ----------------------------
+grid stats
+ grid size = 2 6 2 (longest path in grid is ~ 6 => expected gain = (2*6*2)/6 = 4x)
+ grid C size = 133
+ grid L size = 1,565
+ num empty cells = 34
+took 531.539 seconds.
+
+- profiler difference with previous version
+ . register usage 70 > 82
+ . occupancy 38.3% > 27.5%
+ . warp execution efficiency 42% > 26%
+ . kernel peformance
+   compute 70% > 40%
+   memory 25% > 15%
+ . sample distribution
+   execution dependency	54.3% > 42.7%
+   memory dependency 0.13% > 30.7%
+ . kernel memory
+   L2 cache reads 3GB > 13GB
+   Global loads 100MB > 7.8GB
+   Texture reads 256MB > 18GB
+ 
+notes:
+- access to constant memory is serialized, thus the cost scales linearly with number of unique addresses read by all threads within a warp.
+  constant memory is cached though, so it is possible the value is already present in the cache
+  . metric `stall_constant_memory_dependency`: Percentage of stalls occurring because of immediate constant cache miss
+  
+ GRID STORED IN CONSTANT MEMORY (532s > 395s)
+ ------------------------------
+grid stats for cellSize = 20
+ grid size = 2 6 2
+ grid C size = 25
+ grid L size = 906
+ num empty cells = 6
+took 416.235 seconds.
+
+grid stats for cellSize = 10
+ grid size = 3 11 4
+ grid C size = 133
+ grid L size = 1,565
+ num empty cells = 34
+took 395.184 seconds.
+
+grid stats for cellSize = 5
+ grid size = 6 22 8
+ grid C size = 1,057
+ grid L size = 3,551
+ num empty cells = 535
+took 1,077.38 seconds.
+
+- profiler difference with previous version
+ . kernel peformance
+   compute 40% > 50%
+ . sample distribution
+   execution dependency	42.7% > 64%
+ . kernel memory
+   L2 cache reads 13GB > 8GB
+   Global loads 7.8GB > 176MB
+   Texture reads 18GB > 474MB
+
