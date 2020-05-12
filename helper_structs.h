@@ -3,6 +3,26 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
+typedef unsigned int rand_state;
+
+struct path {
+    vec3 origin;
+    vec3 rayDir;
+    vec3 color; // accumulated direct illumination
+
+    vec3 shadowDir;
+    vec3 lightContribution; // direct illumination that will be added to color if this path's shadow ray reaches the light
+
+    float hitT;
+    uint8_t hitIdx;
+    vec3 hitNormal;
+
+    uint32_t pixelId;
+    uint8_t bounce;
+    vec3 attenuation;
+    rand_state rng;
+};
+
 struct bbox {
     vec3 min;
     vec3 max;

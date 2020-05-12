@@ -23,132 +23,133 @@ __device__ vec3 refract(const vec3& uv, const vec3& n, float etai_over_etat) {
 }
 
 __device__ vec3 reflect(const vec3& v, const vec3& n) {
-     return v - 2.0f*dot(v,n)*n;
+    return v - 2.0f * dot(v, n) * n;
 }
 
-__device__ bool scatter_lambertian(const vec3& albedo, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    vec3 target = rec.normal + random_in_unit_sphere(state);
-    scattered = ray(rec.p, target);
-    attenuation = albedo;
+__device__ bool scatter_lambertian(const vec3& albedo, path& p, bool& shadow) {
+    p.origin += p.hitT * p.rayDir; // TODO should p.origin get updated to the intersection point before we call scatter ?
+    p.rayDir = unit_vector(p.hitNormal + random_in_unit_sphere(p.rng));
+    p.attenuation *= albedo;
     shadow = true;
     return true;
 }
 
 // simplified checker that assumes a plane with normal = (0, 0, 1)
-__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, const hit_record& hit, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    auto sines = sin(frequency * hit.p.x()) * sin(frequency * hit.p.y()) * sin(frequency * hit.p.z());
+__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, path& p, bool& shadow) {
+    const vec3 hitP = p.origin + p.hitT * p.rayDir;
+    auto sines = sin(frequency * hitP.x()) * sin(frequency * hitP.y()) * sin(frequency * hitP.z());
     if (sines < 0)
-        return scatter_lambertian(albedo1, hit, attenuation, scattered, state, shadow);
+        return scatter_lambertian(albedo1, p, shadow);
     else
-        return scatter_lambertian(albedo2, hit, attenuation, scattered, state, shadow);
+        return scatter_lambertian(albedo2, p, shadow);
 }
 
-__device__ bool scatter_metal(const vec3& albedo, float fuzz, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    vec3 reflected = reflect(r_in.direction(), rec.normal);
-    scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
-    attenuation = albedo;
+__device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p, bool& shadow) {
+    vec3 reflected = reflect(p.rayDir, p.hitNormal);
+    vec3 scatterDir = reflected + fuzz * random_in_unit_sphere(p.rng);
+    if (dot(scatterDir, p.hitNormal) <= 0.0f) return false;
+    p.origin += p.hitT * p.rayDir;
+    p.rayDir = unit_vector(scatterDir);
+    p.attenuation *= albedo;
     shadow = false;
-    return (dot(scattered.direction(), rec.normal) > 0.0f);
-}
-
-__device__ bool scatter_dielectric(float ref_idx, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    attenuation = vec3(1.0, 1.0, 1.0);
-    shadow = false;
-    bool frontFace = dot(r_in.direction(), rec.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? rec.normal : -rec.normal;
-    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
-
-    float cos_theta = fminf(dot(-r_in.direction(), hitNormal), 1.0f);
-    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
-        return true;
-    }
-
-    float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(state) < reflect_prob) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
-        return true;
-    }
-
-    vec3 refracted = refract(r_in.direction(), hitNormal, etai_over_etat);
-    scattered = ray(rec.p, refracted);
     return true;
 }
 
-__device__ bool scatter_coat(const vec3& albedo, float ref_idx, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    attenuation = vec3(1.0, 1.0, 1.0);
+__device__ bool scatter_dielectric(float ref_idx, path& p, bool& shadow) {
     shadow = false;
-    bool frontFace = dot(r_in.direction(), rec.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? rec.normal : -rec.normal;
+    p.origin += p.hitT * p.rayDir;
+
+    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
 
-    float cos_theta = fminf(dot(-r_in.direction(), hitNormal), 1.0f);
+    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
     if (etai_over_etat * sin_theta > 1.0f) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
     }
 
     float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(state) < reflect_prob) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
+    if (rnd(p.rng) < reflect_prob) {
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
     }
 
-    return scatter_lambertian(albedo, rec, attenuation, scattered, state, shadow);
+    p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
+    return true;
+}
+
+__device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p, bool& shadow) {
+    shadow = false;
+    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
+    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
+
+    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
+    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
+    if (etai_over_etat * sin_theta > 1.0f) {
+        p.origin += p.hitT * p.rayDir;
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
+        return true;
+    }
+
+    float reflect_prob = schlick(cos_theta, etai_over_etat);
+    if (rnd(p.rng) < reflect_prob) {
+        p.origin += p.hitT * p.rayDir;
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
+        return true;
+    }
+
+    return scatter_lambertian(albedo, p, shadow);
 }
 
 // based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
-__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
-    attenuation = vec3(1.0, 1.0, 1.0);
+__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p, bool& shadow) {
+    p.origin += p.hitT * p.rayDir;
     shadow = false;
-    bool frontFace = dot(r_in.direction(), rec.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? rec.normal : -rec.normal;
+
+    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
+
     if (!frontFace) {
         // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
-        attenuation *= exp(-absorptionCoefficient * rec.t);
+        p.attenuation *= exp(-absorptionCoefficient * p.hitT);
     }
 
-    float cos_theta = fminf(dot(-r_in.direction(), hitNormal), 1.0f);
+    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
     if (etai_over_etat * sin_theta > 1.0f) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
     }
 
     float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(state) < reflect_prob) {
-        vec3 reflected = reflect(r_in.direction(), hitNormal);
-        scattered = ray(rec.p, reflected);
+    if (rnd(p.rng) < reflect_prob) {
+        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
     }
 
-    vec3 refracted = refract(r_in.direction(), hitNormal, etai_over_etat);
-    scattered = ray(rec.p, refracted);
+    p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
     return true;
 }
-__device__ bool scatter(const material& m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered, rand_state& state, bool& shadow) {
+
+__device__ bool scatter(const material& m, path& p, bool& shadow) {
     switch (m.type)
     {
     case LAMBERTIAN:
-        return scatter_lambertian(m.albedo, rec, attenuation, scattered, state, shadow);
+        return scatter_lambertian(m.albedo, p, shadow);
     case DIELECTRIC:
-        return scatter_dielectric(m.ref_idx, r_in, rec, attenuation, scattered, state, shadow);
+        return scatter_dielectric(m.ref_idx, p, shadow);
     case TINTED_GLASS:
-        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, r_in, rec, attenuation, scattered, state, shadow);
+        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, p, shadow);
     case METAL:
-        return scatter_metal(m.albedo, m.fuzz, r_in, rec, attenuation, scattered, state, shadow);
+        return scatter_metal(m.albedo, m.fuzz, p, shadow);
     case COAT:
-        return scatter_coat(m.albedo, m.ref_idx, r_in, rec, attenuation, scattered, state, shadow);
+        return scatter_coat(m.albedo, m.ref_idx, p, shadow);
     case CHECKER:
-        return scatter_checker(m.albedo, m.albedo2, m.frequency, rec, attenuation, scattered, state, shadow);
+        return scatter_checker(m.albedo, m.albedo2, m.frequency, p, shadow);
     default:
         return false;
     }

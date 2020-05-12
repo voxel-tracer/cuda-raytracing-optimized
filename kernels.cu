@@ -56,6 +56,11 @@ struct RenderContext {
     uint16_t numMats;
     float* hdri = NULL;
     plane floor;
+
+    vec3 lightCenter = vec3(-2000, 0, 5000);
+    float lightRadius = 500;
+    vec3 lightColor = vec3(1, 1, 1) * 100;
+
 #ifdef STATS
     uint64_t* numRays;
     __device__ void rayStat(int type) const {
@@ -130,96 +135,93 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
     return hit_anything;
 }
 
-__device__ bool hit(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
-    if (hitMesh(r, context, t_min, t_max, rec, primary, isShadow)) {
+__device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
+    const ray r = isShadow ? ray(p.origin, p.shadowDir) : ray(p.origin, p.rayDir);
+    hit_record rec;
+    bool primary = p.bounce == 0;
+    bool hitAnything = false;
+    if (hitMesh(r, context, 0.001f, FLT_MAX, rec, primary, isShadow)) {
         rec.hitIdx = 0;
-        return true;
-    } else if (planeHit(context.floor, r, t_min, t_max, rec)) {
+        hitAnything = true;
+    } else if (planeHit(context.floor, r, 0.001f, FLT_MAX, rec)) {
         rec.hitIdx = 1;
+        hitAnything = true;
+    }
+
+    if (hitAnything) {
+        p.hitT = rec.t;
+        p.hitIdx = rec.hitIdx;
+        p.hitNormal = rec.normal;
         return true;
     }
 
     return false;
 }
 
-__device__ bool generateShadowRay(const hit_record& hit, ray& shadow, vec3& emitted, rand_state& state) {
-    const vec3 lightCenter(-2000, 0, 5000);
-    const float lightRadius = 500;
-    const vec3 lightColor = vec3(1, 1, 1) * 100;
-
+__device__ bool generateShadowRay(const RenderContext& context, path& p) {
     // create a random direction towards the light
     // coord system for sampling
-    const vec3 sw = unit_vector(lightCenter - hit.p);
+    const vec3 sw = unit_vector(context.lightCenter - p.origin);
     const vec3 su = unit_vector(cross(fabs(sw.x()) > 0.01f ? vec3(0, 1, 0) : vec3(1, 0, 0), sw));
     const vec3 sv = cross(sw, su);
 
     // sample sphere by solid angle
-    const float cosAMax = sqrt(1.0f - lightRadius * lightRadius / (hit.p - lightCenter).squared_length());
-    const float eps1 = rnd(state);
-    const float eps2 = rnd(state);
+    const float cosAMax = sqrt(1.0f - context.lightRadius * context.lightRadius / (p.origin - context.lightCenter).squared_length());
+    const float eps1 = rnd(p.rng);
+    const float eps2 = rnd(p.rng);
     const float cosA = 1.0f - eps1 + eps1 * cosAMax;
     const float sinA = sqrt(1.0f - cosA * cosA);
     const float phi = 2 * M_PI * eps2;
-    const vec3 l = unit_vector(su * cosf(phi) * sinA + sv * sinf(phi) * sinA + sw * cosA);
+    const vec3 l = su * cosf(phi) * sinA + sv * sinf(phi) * sinA + sw * cosA;
 
-    const float dotl = dot(l, hit.normal);
+    const float dotl = dot(l, p.hitNormal);
     if (dotl <= 0)
         return false;
 
+    p.shadowDir = unit_vector(l);
     const float omega = 2 * M_PI * (1.0f - cosAMax);
-    shadow = ray(hit.p, l);
-    emitted = lightColor * dotl * omega / M_PI;
+    p.lightContribution = p.attenuation * context.lightColor * dotl * omega / M_PI;
 
     return true;
 }
 
-// Matching the C++ code would recurse enough into color() calls that
-// it was blowing up the stack, so we have to turn this into a
-// limited-depth loop instead.  Later code in the book limits to a max
-// depth of 50, so we adapt this a few chapters early on the GPU.
-__device__ vec3 color(const ray& r, const RenderContext& context, rand_state& state) {
-    ray cur_ray = r;
-    vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
-    vec3 curColor = vec3(0, 0, 0);
-    bool fromMesh = false;
-    for (int bounce = 0; bounce < 50; bounce++) {
-        bool primary = bounce == 0;
+__device__ void color(const RenderContext& context, path& p) {
+    p.attenuation = vec3(1.0, 1.0, 1.0);
+    p.color = vec3(0, 0, 0);
 #ifdef STATS
+    bool fromMesh = false;
+#endif
+    for (p.bounce = 0; p.bounce < 50; p.bounce++) {
+#ifdef STATS
+        bool primary = p.bounce == 0;
         context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
         if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
-        hit_record rec;
-        if (hit(cur_ray, context, 0.001f, FLT_MAX, rec, primary, false)) {
-            fromMesh = rec.hitIdx == 0;
+        if (hit(context, p, false)) {
 #ifdef STATS
+            fromMesh = rec.hitIdx == 0;
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
-            ray scattered;
-            vec3 attenuation;
             bool hasShadow;
-            if (scatter(context.materials[rec.hitIdx], cur_ray, rec, attenuation, scattered, state, hasShadow)) {
-                cur_attenuation *= attenuation;
-                cur_ray = scattered;
-
+            
+            if (scatter(context.materials[p.hitIdx], p, hasShadow)) {
                 // trace shadow ray if needed
-                ray shadow;
-                vec3 emitted;
-                if (hasShadow && generateShadowRay(rec, shadow, emitted, state)) {
+                if (hasShadow && generateShadowRay(context, p)) {
 #ifdef STATS
                     context.rayStat(NUM_RAYS_SHADOWS);
 #endif
-                    if (!hit(shadow, context, 0.001f, FLT_MAX, rec, bounce == 0, true)) {
+                    if (!hit(context, p, true)) {
 #ifdef STATS
                         context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
 #endif
                         // intersection point is illuminated by the light
-                        curColor += emitted * cur_attenuation;
+                        p.color += p.lightContribution;
                     }
                 }
             }
             else {
-                return curColor;
+                return;
             }
         }
         else {
@@ -229,51 +231,59 @@ __device__ vec3 color(const ray& r, const RenderContext& context, rand_state& st
 #endif
             if (context.hdri != NULL) {
                 // environment map
-                vec3 dir = unit_vector(cur_ray.direction());
+                vec3 dir = p.rayDir;
                 uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
                 vec3 c(
                     context.hdri[(coords.y * 1024 + coords.x)*3],
                     context.hdri[(coords.y * 1024 + coords.x)*3 + 1],
                     context.hdri[(coords.y * 1024 + coords.x)*3 + 2]
                 );
-                return cur_attenuation * c;
+                p.color += p.attenuation * c;
+                return;
             }
             else {
-                // sky color
-                vec3 unit_direction = cur_ray.direction();
-                float t = 0.5f * (unit_direction.z() + 1.0f);
-                vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-                curColor += c * cur_attenuation;
-                return curColor;
 
                 // uniform sky color
                 //curColor += cur_attenuation; // sky is (1, 1, 1)
                 //return curColor;
+
+                // sky color
+                float t = 0.5f * (p.rayDir.z() + 1.0f);
+                vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+                p.color += p.attenuation * c;
+                return;
             }
         }
     }
-    return curColor; // exceeded recursion
+    // exceeded recursion
 }
 
 __global__ void render(const RenderContext context) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if ((i >= context.nx) || (j >= context.ny)) return;
-    int pixel_index = j * context.nx + i;
-    rand_state state = (wang_hash(pixel_index) * 336343633) | 1;
 
-    vec3 col(0, 0, 0);
+    path p;
+    p.pixelId = j * context.nx + i;
+    p.rng = (wang_hash(p.pixelId) * 336343633) | 1;
+
+    vec3 col(0, 0, 0); // this is specific to the pixel so it should be stored separately from the path
     for (int s = 0; s < context.ns; s++) {
-        float u = float(i + rnd(state)) / float(context.nx);
-        float v = float(j + rnd(state)) / float(context.ny);
-        ray r = get_ray(context.cam, u, v, state);
-        col += color(r, context, state);
+        float u = float(i + rnd(p.rng)) / float(context.nx);
+        float v = float(j + rnd(p.rng)) / float(context.ny);
+        ray r = get_ray(context.cam, u, v, p.rng);
+        p.origin = r.origin();
+        p.rayDir = r.direction();
+        color(context, p);
+        // once color() is done, p.color will contain all the light received through p
+        col += p.color;
     }
+    // color is specific to the pixel being traced, 
     col /= float(context.ns);
     col[0] = sqrt(col[0]);
     col[1] = sqrt(col[1]);
     col[2] = sqrt(col[2]);
-    context.fb[pixel_index] = col;
+    context.fb[p.pixelId] = col;
 }
 
 extern "C" void

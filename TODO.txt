@@ -136,7 +136,13 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . increase memory reads
 - DONE copy grid to constant memory
   PERF 531s > 395s (6m35s)
-- analyse perf bottlenecks
+- DONE analyse perf bottlenecks
+ . increased register count => less occupancy
+ . reduced warp efficiency
+ . lots of execution dependency related to loading triangles from constant memory
+- split kernels to reduce register usage
+  do not use advanced optimizations (persistent threads, ...)
+
 - [optional] copy triangles to global memory then texture memory
   given that we access them randomly they many not benefit from constant mem
 - [optional] use russian roulette to stop tracing low intensity paths
@@ -158,3 +164,11 @@ PHASE I.3 SUBSURFACE SCATTERING
 ----------------------------------------------------------------------------------------------------------
 PHASE II
 ----------------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------------
+GENERAL NOTES
+----------------------------------------------------------------------------------------------------------
+- useful nvprof metrics
+ . achieved_occupancy
+ . branch_efficiency
+ . flop_count_dp: number of double precision operations (useful to confirm we aren't using any)

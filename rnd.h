@@ -1,8 +1,6 @@
 #pragma once
 
-#include "vec3.h"
-
-typedef unsigned int rand_state;
+#include "helper_structs.h"
 
 __device__ unsigned int xor_shift_32(rand_state& state)
 {
