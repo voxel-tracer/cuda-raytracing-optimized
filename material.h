@@ -27,7 +27,6 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
 }
 
 __device__ bool scatter_lambertian(const vec3& albedo, path& p, bool& shadow) {
-    p.origin += p.hitT * p.rayDir; // TODO should p.origin get updated to the intersection point before we call scatter ?
     p.rayDir = unit_vector(p.hitNormal + random_in_unit_sphere(p.rng));
     p.attenuation *= albedo;
     shadow = true;
@@ -36,8 +35,7 @@ __device__ bool scatter_lambertian(const vec3& albedo, path& p, bool& shadow) {
 
 // simplified checker that assumes a plane with normal = (0, 0, 1)
 __device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, path& p, bool& shadow) {
-    const vec3 hitP = p.origin + p.hitT * p.rayDir;
-    auto sines = sin(frequency * hitP.x()) * sin(frequency * hitP.y()) * sin(frequency * hitP.z());
+    auto sines = sin(frequency * p.origin.x()) * sin(frequency * p.origin.y()) * sin(frequency * p.origin.z());
     if (sines < 0)
         return scatter_lambertian(albedo1, p, shadow);
     else
@@ -48,7 +46,7 @@ __device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p, bool& sha
     vec3 reflected = reflect(p.rayDir, p.hitNormal);
     vec3 scatterDir = reflected + fuzz * random_in_unit_sphere(p.rng);
     if (dot(scatterDir, p.hitNormal) <= 0.0f) return false;
-    p.origin += p.hitT * p.rayDir;
+
     p.rayDir = unit_vector(scatterDir);
     p.attenuation *= albedo;
     shadow = false;
@@ -57,7 +55,6 @@ __device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p, bool& sha
 
 __device__ bool scatter_dielectric(float ref_idx, path& p, bool& shadow) {
     shadow = false;
-    p.origin += p.hitT * p.rayDir;
 
     bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
     vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
@@ -65,18 +62,12 @@ __device__ bool scatter_dielectric(float ref_idx, path& p, bool& shadow) {
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f) {
+    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
         p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
+    } else {
+        p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
     }
 
-    float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(p.rng) < reflect_prob) {
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
-    }
-
-    p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
     return true;
 }
 
@@ -88,25 +79,16 @@ __device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p, bool& s
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f) {
-        p.origin += p.hitT * p.rayDir;
+    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
         p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
+    } else {
+        return scatter_lambertian(albedo, p, shadow);
     }
-
-    float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(p.rng) < reflect_prob) {
-        p.origin += p.hitT * p.rayDir;
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
-    }
-
-    return scatter_lambertian(albedo, p, shadow);
 }
 
 // based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
 __device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p, bool& shadow) {
-    p.origin += p.hitT * p.rayDir;
     shadow = false;
 
     bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
@@ -120,21 +102,19 @@ __device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoeffi
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f) {
+    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
         p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
+    } else {
+        p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
     }
 
-    float reflect_prob = schlick(cos_theta, etai_over_etat);
-    if (rnd(p.rng) < reflect_prob) {
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
-    }
-
-    p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
     return true;
 }
 
+// p.origin is assumed to be set to the intersection point
+// scatter() will compute p.rayDir and set shadow to true if a shadow ray should be generated
+//
+// TODO introduce path.specular that can be used to decide if we should trace shadow rays and intersect with the light when tracing the next ray
 __device__ bool scatter(const material& m, path& p, bool& shadow) {
     switch (m.type)
     {

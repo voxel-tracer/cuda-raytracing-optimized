@@ -204,7 +204,9 @@ __device__ void color(const RenderContext& context, path& p) {
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
             bool hasShadow;
-            
+            // update path.origin to point to the intersected point
+            p.origin += p.hitT * p.rayDir;
+
             if (scatter(context.materials[p.hitIdx], p, hasShadow)) {
                 // trace shadow ray if needed
                 if (hasShadow && generateShadowRay(context, p)) {
