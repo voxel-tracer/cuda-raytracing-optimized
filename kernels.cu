@@ -57,8 +57,7 @@ struct RenderContext {
     float* hdri = NULL;
     plane floor;
 
-    vec3 lightCenter = vec3(-2000, 0, 5000);
-    float lightRadius = 500;
+    sphere light = sphere(vec3(-2000, 0, 5000), 500);
     vec3 lightColor = vec3(1, 1, 1) * 100;
 
 #ifdef STATS
@@ -146,8 +145,10 @@ __device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
     } else if (planeHit(context.floor, r, 0.001f, FLT_MAX, rec)) {
         rec.hitIdx = 1;
         hitAnything = true;
+    } else if (!isShadow && p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX, rec)) { // specular rays should intersect with the light
+        rec.hitIdx = 2;
+        hitAnything = true;
     }
-    // TODO: specular rays should intersect with the light
 
     if (hitAnything) {
         p.hitT = rec.t;
@@ -162,12 +163,12 @@ __device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
 __device__ bool generateShadowRay(const RenderContext& context, path& p) {
     // create a random direction towards the light
     // coord system for sampling
-    const vec3 sw = unit_vector(context.lightCenter - p.origin);
+    const vec3 sw = unit_vector(context.light.center - p.origin);
     const vec3 su = unit_vector(cross(fabs(sw.x()) > 0.01f ? vec3(0, 1, 0) : vec3(1, 0, 0), sw));
     const vec3 sv = cross(sw, su);
 
     // sample sphere by solid angle
-    const float cosAMax = sqrt(1.0f - context.lightRadius * context.lightRadius / (p.origin - context.lightCenter).squared_length());
+    const float cosAMax = sqrt(1.0f - context.light.radius * context.light.radius / (p.origin - context.light.center).squared_length());
     const float eps1 = rnd(p.rng);
     const float eps2 = rnd(p.rng);
     const float cosA = 1.0f - eps1 + eps1 * cosAMax;
@@ -204,6 +205,13 @@ __device__ void color(const RenderContext& context, path& p) {
             fromMesh = rec.hitIdx == 0;
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
+            if (p.hitIdx == 2) {
+                // ray hit the light, compute its contribution and add it to the path's color
+                // do it naively for now
+                p.color += p.attenuation * context.lightColor;
+                return;
+            }
+
             bool hasShadow;
             // update path.origin to point to the intersected point
             p.origin += p.hitT * p.rayDir;
