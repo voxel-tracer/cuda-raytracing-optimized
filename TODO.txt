@@ -30,6 +30,7 @@ FEATURES
 - one line summary
   allow user to configure PBR materials and replace existing sculpture materials with those
   producing incredible renders (think CGTrader Marvel/DC Comics renders) really fast
+- may make sense to support Nvidia MDL at some point
 
  OTHER DELIVERABLES IN NO PARTICULAR ORDER
  -----------------------------------------
@@ -142,7 +143,9 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . lots of execution dependency related to loading triangles from constant memory
 - split kernels to reduce register usage
   do not use advanced optimizations (persistent threads, ...)
-
+ . DONE create path struct and use it in kernel code
+ . DONE introduced path.specular and fixed caustics
+ 
 - [optional] copy triangles to global memory then texture memory
   given that we access them randomly they many not benefit from constant mem
 - [optional] use russian roulette to stop tracing low intensity paths
@@ -161,6 +164,11 @@ PHASE I.2 BASIC OPTIMIZATIONS
 PHASE I.3 SUBSURFACE SCATTERING
 ----------------------------------------------------------------------------------------------------------
 
+ NOTES
+ -----
+- after this phase is done it makes sense to cleanup the rendering code and simplify it to fit in a single cuda file
+  then write a quick tutorial explaining all the optimizations that got it to run that fast
+  . similar to https://fabiensanglard.net/revisiting_the_businesscard_raytracer/card_cudc.html
 ----------------------------------------------------------------------------------------------------------
 PHASE II
 ----------------------------------------------------------------------------------------------------------
