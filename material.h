@@ -26,35 +26,35 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
     return v - 2.0f * dot(v, n) * n;
 }
 
-__device__ bool scatter_lambertian(const vec3& albedo, path& p, bool& shadow) {
+__device__ bool scatter_lambertian(const vec3& albedo, path& p) {
     p.rayDir = unit_vector(p.hitNormal + random_in_unit_sphere(p.rng));
     p.attenuation *= albedo;
-    shadow = true;
+    p.specular = false;
     return true;
 }
 
 // simplified checker that assumes a plane with normal = (0, 0, 1)
-__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, path& p, bool& shadow) {
+__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, path& p) {
     auto sines = sin(frequency * p.origin.x()) * sin(frequency * p.origin.y()) * sin(frequency * p.origin.z());
     if (sines < 0)
-        return scatter_lambertian(albedo1, p, shadow);
+        return scatter_lambertian(albedo1, p);
     else
-        return scatter_lambertian(albedo2, p, shadow);
+        return scatter_lambertian(albedo2, p);
 }
 
-__device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p, bool& shadow) {
+__device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p) {
     vec3 reflected = reflect(p.rayDir, p.hitNormal);
     vec3 scatterDir = reflected + fuzz * random_in_unit_sphere(p.rng);
     if (dot(scatterDir, p.hitNormal) <= 0.0f) return false;
 
     p.rayDir = unit_vector(scatterDir);
     p.attenuation *= albedo;
-    shadow = false;
+    p.specular = true;
     return true;
 }
 
-__device__ bool scatter_dielectric(float ref_idx, path& p, bool& shadow) {
-    shadow = false;
+__device__ bool scatter_dielectric(float ref_idx, path& p) {
+    p.specular = true;
 
     bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
     vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
@@ -71,8 +71,8 @@ __device__ bool scatter_dielectric(float ref_idx, path& p, bool& shadow) {
     return true;
 }
 
-__device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p, bool& shadow) {
-    shadow = false;
+__device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p) {
+    p.specular = true;
     bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
     vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
@@ -83,13 +83,13 @@ __device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p, bool& s
         p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
         return true;
     } else {
-        return scatter_lambertian(albedo, p, shadow);
+        return scatter_lambertian(albedo, p);
     }
 }
 
 // based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
-__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p, bool& shadow) {
-    shadow = false;
+__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p) {
+    p.specular = true;
 
     bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
     vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
@@ -115,21 +115,21 @@ __device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoeffi
 // scatter() will compute p.rayDir and set shadow to true if a shadow ray should be generated
 //
 // TODO introduce path.specular that can be used to decide if we should trace shadow rays and intersect with the light when tracing the next ray
-__device__ bool scatter(const material& m, path& p, bool& shadow) {
+__device__ bool scatter(const material& m, path& p) {
     switch (m.type)
     {
     case LAMBERTIAN:
-        return scatter_lambertian(m.albedo, p, shadow);
+        return scatter_lambertian(m.albedo, p);
     case DIELECTRIC:
-        return scatter_dielectric(m.ref_idx, p, shadow);
+        return scatter_dielectric(m.ref_idx, p);
     case TINTED_GLASS:
-        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, p, shadow);
+        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, p);
     case METAL:
-        return scatter_metal(m.albedo, m.fuzz, p, shadow);
+        return scatter_metal(m.albedo, m.fuzz, p);
     case COAT:
-        return scatter_coat(m.albedo, m.ref_idx, p, shadow);
+        return scatter_coat(m.albedo, m.ref_idx, p);
     case CHECKER:
-        return scatter_checker(m.albedo, m.albedo2, m.frequency, p, shadow);
+        return scatter_checker(m.albedo, m.albedo2, m.frequency, p);
     default:
         return false;
     }

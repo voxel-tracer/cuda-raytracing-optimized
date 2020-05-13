@@ -147,6 +147,7 @@ __device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
         rec.hitIdx = 1;
         hitAnything = true;
     }
+    // TODO: specular rays should intersect with the light
 
     if (hitAnything) {
         p.hitT = rec.t;
@@ -207,9 +208,9 @@ __device__ void color(const RenderContext& context, path& p) {
             // update path.origin to point to the intersected point
             p.origin += p.hitT * p.rayDir;
 
-            if (scatter(context.materials[p.hitIdx], p, hasShadow)) {
-                // trace shadow ray if needed
-                if (hasShadow && generateShadowRay(context, p)) {
+            if (scatter(context.materials[p.hitIdx], p)) {
+                // trace shadow ray for diffuse rays
+                if (!p.specular && generateShadowRay(context, p)) {
 #ifdef STATS
                     context.rayStat(NUM_RAYS_SHADOWS);
 #endif
@@ -276,6 +277,7 @@ __global__ void render(const RenderContext context) {
         ray r = get_ray(context.cam, u, v, p.rng);
         p.origin = r.origin();
         p.rayDir = r.direction();
+        p.specular = false;
         color(context, p);
         // once color() is done, p.color will contain all the light received through p
         col += p.color;

@@ -9,6 +9,7 @@ struct path {
     vec3 origin;
     vec3 rayDir;
     vec3 color; // accumulated direct illumination
+    bool specular;
 
     vec3 shadowDir;
     vec3 lightContribution; // direct illumination that will be added to color if this path's shadow ray reaches the light
