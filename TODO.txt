@@ -14,6 +14,9 @@ FEATURES
  . basic lighting and background setup that produces great renders
  . apply all the optimizations I learned so far along with any other optimization that may improve the
    performance of the renderer (SAH BVH building, russian roulette, ...)
+   UPDATE: rather than spending time on optimizations that will probably get obsolete once we move to phase 2
+   focus more on the renderer features regardless of its performance (russian roulette, subsurface scattering, hard coded material kernel code, ...)
+
 - optional features
  . transparent bg with invisible plane that allows you to change to color of the whole background while keeping
    the shadows and reflections on the floor
@@ -24,6 +27,8 @@ FEATURES
   enhance phase 1 renderer to support high quality models (sculptures) and optimize BVH construction/traversal
   to render the models as quickly as possible (ideally in real-time)
 - required features
+ . port my spheres BVH and wavefront renderer to support triangle meshes
+ . explore advanced optimization techniques
  
  PBR MATERIAL EDITOR (PHASE III)
  ------------------------------
@@ -31,11 +36,11 @@ FEATURES
   allow user to configure PBR materials and replace existing sculpture materials with those
   producing incredible renders (think CGTrader Marvel/DC Comics renders) really fast
 - may make sense to support Nvidia MDL at some point
+ . start by implementing MDL's basic components on my own to understand the theory behind them
+ . then integrate MDL with my renderer as it supports generating CUDA code directly
 
  OTHER DELIVERABLES IN NO PARTICULAR ORDER
  -----------------------------------------
-- support large polygon models
-- subsurface scattering (Peter Shirley Volume rendering)
 - raylib mesh viewer that supports rendering directly to the viewport
  . we can start with render goes straight to disk
  . this will be useful when building my own rendering/material tool
@@ -46,7 +51,9 @@ FEATURES
  . we can compare performance of my renderer vs others
  . this is useful when I just want to focus on the render core and optimize it
 - advanced materials: implement Disney BRDF and add UI to configure materials
+  MDL seem to be a better alternative
 - allow setting different material per original model color
+- integrate with Optiz denoiser to greatly improve the render quality of my preview renderer
 
  IMPROVEMENTS IN NO PARTICULAR ORDER
  -----------------------------------
@@ -113,6 +120,7 @@ PHASE I.2 BASIC OPTIMIZATIONS
  ------------
 - Fast renderer that can be extended with more expensive materials (in phase 1.3)  and larger models (in phase 2)
   Render tinted-glass on coat w 4096spp < 1mn
+  UPDATE current performance is good enough (<7mn) for now as I will most likely move to my wavefront/BVH renderer soon
 
  PROGRESS
  --------
@@ -141,27 +149,37 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . increased register count => less occupancy
  . reduced warp efficiency
  . lots of execution dependency related to loading triangles from constant memory
-- split kernels to reduce register usage
+- NOPE split kernels to reduce register usage
   do not use advanced optimizations (persistent threads, ...)
  . DONE create path struct and use it in kernel code
  . DONE introduced path.specular and fixed caustics
- 
-- [optional] copy triangles to global memory then texture memory
-  given that we access them randomly they many not benefit from constant mem
-- [optional] use russian roulette to stop tracing low intensity paths
+ UPDATE: too much complexity added too soon and register count didn't get that low (still +70 registers for the traversal logic)
+
+- explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
+  this may reduce register usage and improve rendering performance
+ . print precomputation logic and understand how it works
+ . design required changes
+ . ...
+
+----------------------------------------------------------------------------------------------------------
+PHASE I.3 ENHANCE RENDERER FEATURES
+----------------------------------------------------------------------------------------------------------
+ GOAL
+ ----
+- add features that are a must have for my renderer regardless of its performance
+ . russian roulette
+
+ TASKS
+ -----
+- Use russian roulette to stop tracing low intensity paths
   https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
   user defines number of bounces before we start applying RR = RR_start_bounce
   this can provide a 20% speedup and even more considering those bounces are most likely with high divergence
  . implement RMSE to measure quality loss for various RR_start_bounce
    https://jacco.ompf2.com/2020/04/07/speeding-up-lighthouse-2/
-- NOPE [optional] preprocess the triangles and identify the ones that don't face any other triangle from the mesh
- . those triangles are guaranteed to not hit anything for their shadow and scattered rays (except floor for scattered rays)
- . depends on how many triangles have this property
- . stats show that only 16% of all secondary rays don't hit the mesh => that's the most we can hope to optimize away (not worth it)
-- [extra] use meshLab to simplify more complex models and render them
 
 ----------------------------------------------------------------------------------------------------------
-PHASE I.3 SUBSURFACE SCATTERING
+PHASE I.4 SUBSURFACE SCATTERING
 ----------------------------------------------------------------------------------------------------------
 
  NOTES
