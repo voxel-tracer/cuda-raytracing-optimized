@@ -141,35 +141,35 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
     return rec.t < FLT_MAX;
 }
 
-__device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
+__device__ bool hit(const RenderContext& context, const path& p, bool isShadow, intersection &inters) {
     const ray r = isShadow ? ray(p.origin, p.shadowDir) : ray(p.origin, p.rayDir);
     hit_record rec; // TODO we don't really need hit_record except for hitMesh
     bool primary = p.bounce == 0;
-    p.inters.objId = NONE;
+    inters.objId = NONE;
     if (hitMesh(r, context, 0.001f, FLT_MAX, rec, primary, isShadow)) {
-        p.inters.objId = TRIMESH;
-        p.inters.t = rec.t;
-        p.inters.p = r.point_at_parameter(rec.t);
+        inters.objId = TRIMESH;
+        inters.t = rec.t;
+        inters.p = r.point_at_parameter(rec.t);
         // compute normal as usual, TODO load normals and interpolate at intersection point
         {
             vec3 v0 = d_triangles[rec.triId * 3];
             vec3 v1 = d_triangles[rec.triId * 3 + 1];
             vec3 v2 = d_triangles[rec.triId * 3 + 2];
 
-            p.inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
+            inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
         }
-    } else if ((p.inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
-        p.inters.objId = PLANE;
-        p.inters.p = r.point_at_parameter(p.inters.t);
-        p.inters.normal = context.floor.norm;
+    } else if ((inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
+        inters.objId = PLANE;
+        inters.p = r.point_at_parameter(inters.t);
+        inters.normal = context.floor.norm;
     } else if (!isShadow && p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
-        p.inters.objId = LIGHT;
+        inters.objId = LIGHT;
     }
 
-    return p.inters.objId != NONE;
+    return inters.objId != NONE;
 }
 
-__device__ bool generateShadowRay(const RenderContext& context, path& p) {
+__device__ bool generateShadowRay(const RenderContext& context, path& p, const intersection &inters) {
     // create a random direction towards the light
     // coord system for sampling
     const vec3 sw = unit_vector(context.light.center - p.origin);
@@ -185,7 +185,7 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p) {
     const float phi = 2 * M_PI * eps2;
     const vec3 l = su * cosf(phi) * sinA + sv * sinf(phi) * sinA + sw * cosA;
 
-    const float dotl = dot(l, p.inters.normal);
+    const float dotl = dot(l, inters.normal);
     if (dotl <= 0)
         return false;
 
@@ -210,12 +210,12 @@ __device__ void color(const RenderContext& context, path& p) {
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
         intersection inters;
-        if (hit(context, p, false)) {
+        if (hit(context, p, false, inters)) {
 #ifdef STATS
             fromMesh = rec.hitIdx == 0;
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
-            if (p.inters.objId == LIGHT) {
+            if (inters.objId == LIGHT) {
                 // ray hit the light, compute its contribution and add it to the path's color
                 // do it naively for now
                 p.color += p.attenuation * context.lightColor;
@@ -224,16 +224,16 @@ __device__ void color(const RenderContext& context, path& p) {
 
             bool hasShadow;
             // update path.origin to point to the intersected point
-            p.origin += p.inters.t * p.rayDir;
+            p.origin = inters.p;
 
-            int matIdx = (p.inters.objId == TRIMESH) ? 0 : 1;
-            if (scatter(context.materials[matIdx], p)) {
+            int matIdx = (inters.objId == TRIMESH) ? 0 : 1;
+            if (scatter(context.materials[matIdx], p, inters)) {
                 // trace shadow ray for diffuse rays
-                if (!p.specular && generateShadowRay(context, p)) {
+                if (!p.specular && generateShadowRay(context, p, inters)) {
 #ifdef STATS
                     context.rayStat(NUM_RAYS_SHADOWS);
 #endif
-                    if (!hit(context, p, true)) {
+                    if (!hit(context, p, true, inters)) {
 #ifdef STATS
                         context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
 #endif

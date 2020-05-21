@@ -25,8 +25,6 @@ struct path {
     uint8_t bounce;
     vec3 attenuation;
     rand_state rng;
-
-    intersection inters;
 };
 
 struct bbox {
