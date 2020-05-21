@@ -73,6 +73,13 @@ FEATURES
 - Gimp "White Balance" improves the quality of the final renderer
  . can I implement the same strategy in my renderer ?
 - all rendering params are configurables from a simple test file. Create a separate file per test scene
+- once I implement wavefront renderer, use CUDA graphs to optimize lunching the kernels
+- Improve wavefront termination condition as follows (for offline mode):
+ . track number samples completed for each pixel
+ . once num samples for pixel p reach ns, increment global numDonePixels counter
+ . host checks if numDonePixels == (nx * ny) every few iterations to stop the renderer
+ . keep sampling pixels that completed all their samples but we don't need to account their color in the framebuffer
+   if it helps keeping the logic simpler
 ---------------------------------------------------------------------------------------------------------
 PHASE I.1: POLYGON RENDERER
 ---------------------------------------------------------------------------------------------------------
@@ -155,9 +162,16 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . DONE introduced path.specular and fixed caustics
  UPDATE: too much complexity added too soon and register count didn't get that low (still +70 registers for the traversal logic)
 
+- interpolate vertice normals
+ . rewrite intersection logic to delay computing most intersection details after we find closest hit
+  . this will require separate normal computation logic depending on mesh vs plane intersection
+ . expose hit uv coordinates from hitMesh()
+ . copy mesh normals to global memory and expose pointer to RenderContext
+ . color() computes interpolated normal when hitIdx == MESH_HIT
+ 
 - explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
   this may reduce register usage and improve rendering performance
- . print precomputation logic and understand how it works
+ . DONE print precomputation logic and understand how it works
  . design required changes
  . ...
 
@@ -187,6 +201,7 @@ PHASE I.4 SUBSURFACE SCATTERING
 - after this phase is done it makes sense to cleanup the rendering code and simplify it to fit in a single cuda file
   then write a quick tutorial explaining all the optimizations that got it to run that fast
   . similar to https://fabiensanglard.net/revisiting_the_businesscard_raytracer/card_cudc.html
+
 ----------------------------------------------------------------------------------------------------------
 PHASE II
 ----------------------------------------------------------------------------------------------------------
