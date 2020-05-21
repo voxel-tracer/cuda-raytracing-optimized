@@ -33,7 +33,7 @@ __device__ float planeHit(const plane& p, const ray& r, float t_min, float t_max
     return t;
 }
 
-__device__ float triangleHit(const vec3* tri, const ray& r, float t_min, float t_max) {
+__device__ float triangleHit(const vec3* tri, const ray& r, float t_min, float t_max, float & hitU, float &hitV) {
     const float EPSILON = 0.0000001;
     vec3 vertex0 = tri[0];
     vec3 vertex1 = tri[1];
@@ -59,7 +59,8 @@ __device__ float triangleHit(const vec3* tri, const ray& r, float t_min, float t
     float t = f * dot(edge2, q);
     if (t > t_min && t < t_max) // ray intersection
     {
-        //rec.normal = unit_vector(cross(edge1, edge2));
+        hitU = u;
+        hitV = v;
         return t;
     }
     else // This means that there is a line intersection but not a ray intersection.

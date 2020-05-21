@@ -164,10 +164,13 @@ PHASE I.2 BASIC OPTIMIZATIONS
 
 - interpolate vertice normals
 	ptxas info    : Used 86 registers, 576 bytes cmem[0], 244 bytes cmem[2]
- . rewrite intersection logic to delay computing most intersection details after we find closest hit
+ . DONE rewrite intersection logic to delay computing most intersection details after we find closest hit
     ptxas info    : Used 82 registers, 576 bytes cmem[0], 264 bytes cmem[2]
- . expose hit uv coordinates from hitMesh()
- . copy mesh normals to global memory and expose pointer to RenderContext
+ . DONE expose hit uv coordinates from hitMesh() + more replace hit_record with tri_hit
+    ptxas info    : Used 78 registers, 576 bytes cmem[0], 264 bytes cmem[2]
+ . DONE found small optimization with shadow rays (we don't need to intersect them with plane and we don't need to compute intersection details for them)
+	PERF 395s (6m35s) > 350s (5m50s)
+. copy mesh normals to global memory and expose pointer to RenderContext
  . color() computes interpolated normal when hitIdx == MESH_HIT
  
 - explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup

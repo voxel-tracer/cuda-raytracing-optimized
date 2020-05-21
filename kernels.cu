@@ -100,16 +100,16 @@ struct RenderContext {
 
 RenderContext renderContext;
 
-__device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, hit_record& rec, bool primary, bool isShadow) {
+__device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
     if (!hit_bbox(context.bounds, r, t_max)) {
 #ifdef STATS
         if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
 #endif
-        return false;
+        return FLT_MAX;
     }
 
-    rec.t = FLT_MAX;
+    float closest = FLT_MAX;
 
     // loop through grid cells
     const grid& g = context.g;
@@ -122,48 +122,57 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
                     vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
                     vec3(cx + 1, cy + 1, cz + 1) * g.cellSize + context.bounds.min
                 );
-                if (!hit_bbox(cbounds, r, rec.t)) continue; // ray doesn't intersect with cell's bounds
+                if (!hit_bbox(cbounds, r, closest)) continue; // ray doesn't intersect with cell's bounds
 
                 // loop through cell's triangles
                 for (uint16_t idx = d_gridC[ci]; idx < d_gridC[ci + 1]; idx++) {
-                    float hitT = triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, rec.t);
+                    float u, v;
+                    float hitT = triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, closest, u, v);
                     if (hitT < FLT_MAX) {
-                        if (isShadow) return true;
+                        if (isShadow) return 0.0f;
 
-                        rec.t = hitT;
+                        closest = hitT;
                         rec.triId = d_gridL[idx];
+                        rec.u = u;
+                        rec.v = v;
                     }
                 }
             }
         }
     }
 
-    return rec.t < FLT_MAX;
+    return closest;
 }
 
 __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, intersection &inters) {
     const ray r = isShadow ? ray(p.origin, p.shadowDir) : ray(p.origin, p.rayDir);
-    hit_record rec; // TODO we don't really need hit_record except for hitMesh
+    tri_hit triHit;
     bool primary = p.bounce == 0;
     inters.objId = NONE;
-    if (hitMesh(r, context, 0.001f, FLT_MAX, rec, primary, isShadow)) {
+    if ((inters.t = hitMesh(r, context, 0.001f, FLT_MAX, triHit, primary, isShadow)) < FLT_MAX) {
+        if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
+
         inters.objId = TRIMESH;
-        inters.t = rec.t;
-        inters.p = r.point_at_parameter(rec.t);
+        inters.p = r.point_at_parameter(inters.t);
         // compute normal as usual, TODO load normals and interpolate at intersection point
         {
-            vec3 v0 = d_triangles[rec.triId * 3];
-            vec3 v1 = d_triangles[rec.triId * 3 + 1];
-            vec3 v2 = d_triangles[rec.triId * 3 + 2];
+            vec3 v0 = d_triangles[triHit.triId * 3];
+            vec3 v1 = d_triangles[triHit.triId * 3 + 1];
+            vec3 v2 = d_triangles[triHit.triId * 3 + 2];
 
             inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
         }
-    } else if ((inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
-        inters.objId = PLANE;
-        inters.p = r.point_at_parameter(inters.t);
-        inters.normal = context.floor.norm;
-    } else if (!isShadow && p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
-        inters.objId = LIGHT;
+    } else {
+        if (isShadow) return false; // shadow rays only care about the main triangle mesh
+
+        if ((inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
+            inters.objId = PLANE;
+            inters.p = r.point_at_parameter(inters.t);
+            inters.normal = context.floor.norm;
+        }
+        else if (p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+            inters.objId = LIGHT;
+        }
     }
 
     return inters.objId != NONE;

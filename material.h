@@ -1,8 +1,6 @@
 #ifndef MATERIALH
 #define MATERIALH
 
-struct hit_record;
-
 #include "rnd.h"
 #include "ray.h"
 #include "helper_structs.h"

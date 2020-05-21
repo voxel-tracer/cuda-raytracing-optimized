@@ -77,9 +77,9 @@ struct sphere
     float radius;
 };
 
-struct hit_record {
-    float t;
+struct tri_hit {
     unsigned int triId; // triangle that was intersected
+    float u, v;
 };
 
 enum material_type 
