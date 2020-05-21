@@ -258,7 +258,7 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 4;

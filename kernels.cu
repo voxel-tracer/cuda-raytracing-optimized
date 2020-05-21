@@ -20,6 +20,13 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
+enum OBJ_ID {
+    NONE,
+    TRIMESH,
+    PLANE,
+    LIGHT
+};
+
 const int kMaxTris = 1000;
 const int kMaxC = 1100;
 const int kMaxL = 3600;
@@ -102,8 +109,7 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
         return false;
     }
 
-    bool hit_anything = false;
-    float closest_so_far = t_max;
+    rec.t = FLT_MAX;
 
     // loop through grid cells
     const grid& g = context.g;
@@ -116,48 +122,51 @@ __device__ bool hitMesh(const ray& r, const RenderContext& context, float t_min,
                     vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
                     vec3(cx + 1, cy + 1, cz + 1) * g.cellSize + context.bounds.min
                 );
-                if (!hit_bbox(cbounds, r, closest_so_far)) continue; // ray doesn't intersect with cell's bounds
+                if (!hit_bbox(cbounds, r, rec.t)) continue; // ray doesn't intersect with cell's bounds
 
                 // loop through cell's triangles
                 for (uint16_t idx = d_gridC[ci]; idx < d_gridC[ci + 1]; idx++) {
-                    if (triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, closest_so_far, rec)) {
+                    float hitT = triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, rec.t);
+                    if (hitT < FLT_MAX) {
                         if (isShadow) return true;
 
-                        hit_anything = true;
-                        closest_so_far = rec.t;
+                        rec.t = hitT;
+                        rec.triId = d_gridL[idx];
                     }
                 }
             }
         }
     }
 
-    return hit_anything;
+    return rec.t < FLT_MAX;
 }
 
 __device__ bool hit(const RenderContext& context, path& p, bool isShadow) {
     const ray r = isShadow ? ray(p.origin, p.shadowDir) : ray(p.origin, p.rayDir);
-    hit_record rec;
+    hit_record rec; // TODO we don't really need hit_record except for hitMesh
     bool primary = p.bounce == 0;
-    bool hitAnything = false;
+    p.inters.objId = NONE;
     if (hitMesh(r, context, 0.001f, FLT_MAX, rec, primary, isShadow)) {
-        rec.hitIdx = 0;
-        hitAnything = true;
-    } else if (planeHit(context.floor, r, 0.001f, FLT_MAX, rec)) {
-        rec.hitIdx = 1;
-        hitAnything = true;
-    } else if (!isShadow && p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX, rec)) { // specular rays should intersect with the light
-        rec.hitIdx = 2;
-        hitAnything = true;
+        p.inters.objId = TRIMESH;
+        p.inters.t = rec.t;
+        p.inters.p = r.point_at_parameter(rec.t);
+        // compute normal as usual, TODO load normals and interpolate at intersection point
+        {
+            vec3 v0 = d_triangles[rec.triId * 3];
+            vec3 v1 = d_triangles[rec.triId * 3 + 1];
+            vec3 v2 = d_triangles[rec.triId * 3 + 2];
+
+            p.inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
+        }
+    } else if ((p.inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
+        p.inters.objId = PLANE;
+        p.inters.p = r.point_at_parameter(p.inters.t);
+        p.inters.normal = context.floor.norm;
+    } else if (!isShadow && p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        p.inters.objId = LIGHT;
     }
 
-    if (hitAnything) {
-        p.hitT = rec.t;
-        p.hitIdx = rec.hitIdx;
-        p.hitNormal = rec.normal;
-        return true;
-    }
-
-    return false;
+    return p.inters.objId != NONE;
 }
 
 __device__ bool generateShadowRay(const RenderContext& context, path& p) {
@@ -176,7 +185,7 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p) {
     const float phi = 2 * M_PI * eps2;
     const vec3 l = su * cosf(phi) * sinA + sv * sinf(phi) * sinA + sw * cosA;
 
-    const float dotl = dot(l, p.hitNormal);
+    const float dotl = dot(l, p.inters.normal);
     if (dotl <= 0)
         return false;
 
@@ -200,12 +209,13 @@ __device__ void color(const RenderContext& context, path& p) {
         if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
         if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
+        intersection inters;
         if (hit(context, p, false)) {
 #ifdef STATS
             fromMesh = rec.hitIdx == 0;
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
-            if (p.hitIdx == 2) {
+            if (p.inters.objId == LIGHT) {
                 // ray hit the light, compute its contribution and add it to the path's color
                 // do it naively for now
                 p.color += p.attenuation * context.lightColor;
@@ -214,9 +224,10 @@ __device__ void color(const RenderContext& context, path& p) {
 
             bool hasShadow;
             // update path.origin to point to the intersected point
-            p.origin += p.hitT * p.rayDir;
+            p.origin += p.inters.t * p.rayDir;
 
-            if (scatter(context.materials[p.hitIdx], p)) {
+            int matIdx = (p.inters.objId == TRIMESH) ? 0 : 1;
+            if (scatter(context.materials[matIdx], p)) {
                 // trace shadow ray for diffuse rays
                 if (!p.specular && generateShadowRay(context, p)) {
 #ifdef STATS

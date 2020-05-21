@@ -5,6 +5,13 @@
 
 typedef unsigned int rand_state;
 
+struct intersection {
+    unsigned int objId; // object that was intersected
+    float t;
+    vec3 p;
+    vec3 normal;
+};
+
 struct path {
     vec3 origin;
     vec3 rayDir;
@@ -14,14 +21,12 @@ struct path {
     vec3 shadowDir;
     vec3 lightContribution; // direct illumination that will be added to color if this path's shadow ray reaches the light
 
-    float hitT;
-    uint8_t hitIdx;
-    vec3 hitNormal;
-
     uint32_t pixelId;
     uint8_t bounce;
     vec3 attenuation;
     rand_state rng;
+
+    intersection inters;
 };
 
 struct bbox {
@@ -72,6 +77,11 @@ struct sphere
     
     vec3 center;
     float radius;
+};
+
+struct hit_record {
+    float t;
+    unsigned int triId; // triangle that was intersected
 };
 
 enum material_type 

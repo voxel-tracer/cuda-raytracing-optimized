@@ -27,7 +27,7 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
 }
 
 __device__ bool scatter_lambertian(const vec3& albedo, path& p) {
-    p.rayDir = unit_vector(p.hitNormal + random_in_unit_sphere(p.rng));
+    p.rayDir = unit_vector(p.inters.normal + random_in_unit_sphere(p.rng));
     p.attenuation *= albedo;
     p.specular = false;
     return true;
@@ -43,9 +43,9 @@ __device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float 
 }
 
 __device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p) {
-    vec3 reflected = reflect(p.rayDir, p.hitNormal);
+    vec3 reflected = reflect(p.rayDir, p.inters.normal);
     vec3 scatterDir = reflected + fuzz * random_in_unit_sphere(p.rng);
-    if (dot(scatterDir, p.hitNormal) <= 0.0f) return false;
+    if (dot(scatterDir, p.inters.normal) <= 0.0f) return false;
 
     p.rayDir = unit_vector(scatterDir);
     p.attenuation *= albedo;
@@ -56,8 +56,8 @@ __device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p) {
 __device__ bool scatter_dielectric(float ref_idx, path& p) {
     p.specular = true;
 
-    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
-    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
+    bool frontFace = dot(p.rayDir, p.inters.normal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.inters.normal : -p.inters.normal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
@@ -73,8 +73,8 @@ __device__ bool scatter_dielectric(float ref_idx, path& p) {
 
 __device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p) {
     p.specular = true;
-    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
-    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
+    bool frontFace = dot(p.rayDir, p.inters.normal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.inters.normal : -p.inters.normal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
@@ -91,13 +91,13 @@ __device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p) {
 __device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p) {
     p.specular = true;
 
-    bool frontFace = dot(p.rayDir, p.hitNormal) < 0.0f;
-    vec3 hitNormal = frontFace ? p.hitNormal : -p.hitNormal;
+    bool frontFace = dot(p.rayDir, p.inters.normal) < 0.0f;
+    vec3 hitNormal = frontFace ? p.inters.normal : -p.inters.normal;
     float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
 
     if (!frontFace) {
         // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
-        p.attenuation *= exp(-absorptionCoefficient * p.hitT);
+        p.attenuation *= exp(-absorptionCoefficient * p.inters.t);
     }
 
     float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
