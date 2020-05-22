@@ -232,7 +232,8 @@ void setupMaterials(material** h_materials, uint16_t& numMats) {
     //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    (*h_materials)[0] = new_coat(modelColor, 1.5f);
+    (*h_materials)[0] = new_coat(modelColor, 1.1f);
+    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
     //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
 #ifdef CUBE
@@ -261,7 +262,7 @@ void loadHDRiEnvMap(const char *filename) {
 int main() {
     bool perf = false;
     bool fast = false;
-    bool interpolateNormals = false;
+    bool interpolateNormals = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 4;
