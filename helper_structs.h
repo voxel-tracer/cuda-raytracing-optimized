@@ -51,13 +51,14 @@ struct grid {
 
 struct mesh {
     vec3* tris;
+    vec3* norms;
     uint16_t numTris;
     bbox bounds;
 
     grid g;
 
     mesh() {}
-    mesh(vec3* _tris, uint16_t _numTris, bbox _bounds) :tris(_tris), numTris(_numTris), bounds(_bounds) {}
+    mesh(vec3* _tris, vec3* _norms, uint16_t _numTris, bbox _bounds) :tris(_tris), norms(_norms), numTris(_numTris), bounds(_bounds) {}
 };
 
 struct plane {

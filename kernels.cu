@@ -52,6 +52,7 @@ __device__ __constant__ uint16_t d_gridL[kMaxL];
 
 struct RenderContext {
     vec3* fb;
+    vec3* modelNorms;
     uint16_t numTris;
     bbox bounds;
     grid g;
@@ -156,11 +157,11 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         inters.p = r.point_at_parameter(inters.t);
         // compute normal as usual, TODO load normals and interpolate at intersection point
         {
-            vec3 v0 = d_triangles[triHit.triId * 3];
-            vec3 v1 = d_triangles[triHit.triId * 3 + 1];
-            vec3 v2 = d_triangles[triHit.triId * 3 + 2];
+            vec3 n0 = context.modelNorms[triHit.triId * 3];
+            vec3 n1 = context.modelNorms[triHit.triId * 3 + 1];
+            vec3 n2 = context.modelNorms[triHit.triId * 3 + 2];
 
-            inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
+            inters.normal = unit_vector(triHit.u * n1 + triHit.v * n2 + (1.0f - triHit.u - triHit.v) * n0);
         }
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
@@ -337,6 +338,9 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
     renderContext.numTris = m.numTris;
     renderContext.bounds = m.bounds;
 
+    checkCudaErrors(cudaMalloc((void**)&renderContext.modelNorms, m.numTris * 3 * sizeof(vec3)));
+    checkCudaErrors(cudaMemcpy(renderContext.modelNorms, m.norms, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
+
     // copy grid to gpu
     renderContext.g = m.g;
     checkCudaErrors(cudaMemcpyToSymbol(d_gridC, m.g.C, m.g.sizeC() * sizeof(uint16_t)));
@@ -371,6 +375,7 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(renderContext.materials));
     checkCudaErrors(cudaFree(renderContext.fb));
+    checkCudaErrors(cudaFree(renderContext.modelNorms));
     if (renderContext.hdri != NULL) checkCudaErrors(cudaFree(renderContext.hdri));
 
     cudaDeviceReset();

@@ -166,6 +166,8 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
         std::cerr << " texcoord size " << attrib.texcoords.size() << std::endl;
     if (!attrib.colors.empty())
         std::cerr << " colors size " << attrib.colors.size() << std::endl;
+    if (!attrib.normals.empty())
+        std::cerr << " normals size " << attrib.normals.size() << std::endl;
 
     // first count how many triangles we have
     m.numTris = 0;
@@ -177,6 +179,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
     // loop over shapes and copy all triangles to array
     m.tris = new vec3[m.numTris * 3];
+    m.norms = new vec3[m.numTris * 3];
     uint16_t vec_index = 0;
     for (auto s = 0; s < shapes.size(); s++) {
         // loop over faces
@@ -194,7 +197,12 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
 
+                tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
+                tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
+                tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
+
                 vec3 tri(vx, vy, vz);
+                m.norms[vec_index] = vec3(nx, ny, nz);
                 m.tris[vec_index++] = tri;
 
                 // update bounds
@@ -292,6 +300,7 @@ int main() {
         // setup floor
         initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny);
         delete[] m.tris;
+        delete[] m.norms;
         delete[] m.g.C;
         delete[] m.g.L;
         delete[] materials;
