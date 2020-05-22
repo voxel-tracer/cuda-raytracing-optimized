@@ -10,13 +10,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION 
 #include <tiny_obj_loader.h>
 
-// Required to include vec3.h
-#include "helper_structs.h"
-
-extern "C" void initRenderer(const mesh m, material * h_materials, uint16_t numMats, plane floor, const camera cam, vec3 * *fb, int nx, int ny);
-extern "C" void initHDRi(float* data, int x, int y, int n);
-extern "C" void runRenderer(int ns, int tx, int ty);
-extern "C" void cleanupRenderer();
+#include "kernels.h"
 
 float random_float(unsigned int& state) {
     state = (214013 * state + 2531011);

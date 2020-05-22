@@ -13,6 +13,7 @@
   <ItemGroup>
     <ClInclude Include="camera.h" />
     <ClInclude Include="helper_structs.h" />
+    <ClInclude Include="kernels.h" />
     <ClInclude Include="material.h" />
     <ClInclude Include="ray.h" />
     <ClInclude Include="rnd.h" />
