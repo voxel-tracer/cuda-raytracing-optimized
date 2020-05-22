@@ -232,8 +232,8 @@ void setupMaterials(material** h_materials, uint16_t& numMats) {
     //(*h_materials)[0] = new_dielectric(1.5);
     //(*h_materials)[0] = new_lambertian(modelColor);
     //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
-    (*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
+    (*h_materials)[0] = new_coat(modelColor, 1.5f);
+    //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
 
 #ifdef CUBE
     (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);
@@ -260,7 +260,8 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
+    bool interpolateNormals = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 4;
@@ -292,7 +293,7 @@ int main() {
         camera cam = setup_camera(nx, ny);
 
         // setup floor
-        initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny);
+        initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny, interpolateNormals);
         delete[] m.tris;
         delete[] m.norms;
         delete[] m.g.C;

@@ -68,6 +68,8 @@ struct RenderContext {
     sphere light = sphere(vec3(-2000, 0, 5000), 500);
     vec3 lightColor = vec3(1, 1, 1) * 100;
 
+    bool interpolateNormals = true; // when set to false compute triangle normal from its plane
+
 #ifdef STATS
     uint64_t* numRays;
     __device__ void rayStat(int type) const {
@@ -155,13 +157,18 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
 
         inters.objId = TRIMESH;
         inters.p = r.point_at_parameter(inters.t);
-        // compute normal as usual, TODO load normals and interpolate at intersection point
-        {
+        if (context.interpolateNormals) {
             vec3 n0 = context.modelNorms[triHit.triId * 3];
             vec3 n1 = context.modelNorms[triHit.triId * 3 + 1];
             vec3 n2 = context.modelNorms[triHit.triId * 3 + 2];
 
             inters.normal = unit_vector(triHit.u * n1 + triHit.v * n2 + (1.0f - triHit.u - triHit.v) * n0);
+        } else {
+            vec3 v0 = d_triangles[triHit.triId * 3];
+            vec3 v1 = d_triangles[triHit.triId * 3 + 1];
+            vec3 v2 = d_triangles[triHit.triId * 3 + 2];
+
+            inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
         }
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
@@ -320,10 +327,11 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny, bool interpolateNormals) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
+    renderContext.interpolateNormals = interpolateNormals;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));

@@ -170,9 +170,12 @@ PHASE I.2 BASIC OPTIMIZATIONS
     ptxas info    : Used 78 registers, 576 bytes cmem[0], 264 bytes cmem[2]
  . DONE found small optimization with shadow rays (we don't need to intersect them with plane and we don't need to compute intersection details for them)
 	PERF 395s (6m35s) > 350s (5m50s)
-. copy mesh normals to global memory and expose pointer to RenderContext
- . color() computes interpolated normal when hitIdx == MESH_HIT
- 
+ . DONE copy mesh normals to global memory and expose pointer to RenderContext
+ . DONE color() computes interpolated normal when hitIdx == MESH_HIT
+    ptxas info    : Used 84 registers, 584 bytes cmem[0], 264 bytes cmem[2]
+	PERF is worse 401s even when disabling interpolated normals
+ . copy normals to constant memory
+
 - explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
   this may reduce register usage and improve rendering performance
  . DONE print precomputation logic and understand how it works
