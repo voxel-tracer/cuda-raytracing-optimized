@@ -80,6 +80,16 @@ FEATURES
  . host checks if numDonePixels == (nx * ny) every few iterations to stop the renderer
  . keep sampling pixels that completed all their samples but we don't need to account their color in the framebuffer
    if it helps keeping the logic simpler
+
+ POTENTIAL DIRECTION
+ -------------------
+* use MDL as a guide to write my own easy to combine material blocks
+  e.g. coat, dielectric and tinted glass share the same fresnel reflection/refraction logic
+   find ways to make it easy to combine blocks of code to build those materials
+- instead of writing generic material scattering logic, write custom code that handles the specific
+  materials I want to render
+- eventually I can move to a code generation/templating so I can generate kernel code on demand
+* move rendering logic to the cloud and build a web editor to interact with the renderer using PixiJS
 ---------------------------------------------------------------------------------------------------------
 PHASE I.1: POLYGON RENDERER
 ---------------------------------------------------------------------------------------------------------
@@ -162,7 +172,7 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . DONE introduced path.specular and fixed caustics
  UPDATE: too much complexity added too soon and register count didn't get that low (still +70 registers for the traversal logic)
 
-- interpolate vertice normals
+- DONE interpolate vertice normals
 	ptxas info    : Used 86 registers, 576 bytes cmem[0], 244 bytes cmem[2]
  . DONE rewrite intersection logic to delay computing most intersection details after we find closest hit
     ptxas info    : Used 82 registers, 576 bytes cmem[0], 264 bytes cmem[2]
@@ -174,13 +184,26 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . DONE color() computes interpolated normal when hitIdx == MESH_HIT
     ptxas info    : Used 84 registers, 584 bytes cmem[0], 264 bytes cmem[2]
 	PERF is worse 401s even when disabling interpolated normals
- . copy normals to constant memory
+ . DONE copy normals to constant memory
+	didn't improve performance
 
-- explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
+- NOPE adaptive sampling to skip pixels that don't have any specular light hit nor mix of shadow/no shadow hits
+ . skip pixels that don't hit anything after X spp (X=32)
+ . skip pixels that don't hit mesh in any bounce and in their primary shadow)
+   PERF is actually worse, most likely because those skipped pixels weren't expensive to compute in the first place and the added
+    complexity and register usage affects all pixels
+
+- [optional ] russian roulette
+	
+- [optional] explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
   this may reduce register usage and improve rendering performance
  . DONE print precomputation logic and understand how it works
  . design required changes
  . ...
+
+ EXTRA (for now or later)
+ -----
+- learn how to use Nsight and investigate which parts of the code use too much registers
 
 ----------------------------------------------------------------------------------------------------------
 PHASE I.3 ENHANCE RENDERER FEATURES
