@@ -224,12 +224,12 @@ __device__ void color(const RenderContext& context, path& p) {
         bool primary = p.bounce == 0;
         context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
         if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
-        if (cur_attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
+        if (p.attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
         intersection inters;
         if (hit(context, p, false, inters)) {
 #ifdef STATS
-            fromMesh = rec.hitIdx == 0;
+            fromMesh = (inters.objId == TRIMESH);
             if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
             if (inters.objId == LIGHT) {
@@ -239,7 +239,6 @@ __device__ void color(const RenderContext& context, path& p) {
                 return;
             }
 
-            bool hasShadow;
             // update path.origin to point to the intersected point
             p.origin = inters.p;
 
