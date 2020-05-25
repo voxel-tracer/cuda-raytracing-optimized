@@ -6,6 +6,7 @@
 #include "material.h"
 
 //#define STATS
+#define RUSSIAN_ROULETTE
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -292,6 +293,17 @@ __device__ void color(const RenderContext& context, path& p) {
                 return;
             }
         }
+
+#ifdef RUSSIAN_ROULETTE
+        // russian roulette
+        if (p.bounce > 3) {
+            float m = max(p.attenuation);
+            if (rnd(p.rng) > m) {
+                break;
+            }
+            p.attenuation *= 1 / m;
+        }
+#endif
     }
     // exceeded recursion
 }

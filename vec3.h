@@ -110,6 +110,10 @@ __host__ __device__ inline float min(const vec3& v) {
     return fminf(v.x(), fminf(v.y(), v.z()));
 }
 
+__host__ __device__ inline float max(const vec3& v) {
+    return fmaxf(v.x(), fmaxf(v.y(), v.z()));
+}
+
 __host__ __device__ inline vec3 min(const vec3& v1, const vec3& v2) {
     return vec3(
         fminf(v1.x(), v2.x()),
