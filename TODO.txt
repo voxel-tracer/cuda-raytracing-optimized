@@ -80,6 +80,8 @@ FEATURES
  . host checks if numDonePixels == (nx * ny) every few iterations to stop the renderer
  . keep sampling pixels that completed all their samples but we don't need to account their color in the framebuffer
    if it helps keeping the logic simpler
+- explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
+  this may reduce register usage and improve rendering performance
 
  POTENTIAL DIRECTION
  -------------------
@@ -141,7 +143,7 @@ PHASE I.2 BASIC OPTIMIZATIONS
 
  PROGRESS
  --------
- 1045s (17m45s) > 757s (12m37s) > 531s (8m51s) > 395s (6m35s)
+ 1045s (17m45s) > 757s (12m37s) > 531s (8m51s) > 395s (6m35s) > 350s (5m50s) > 290s (4m50s)
 
  TASKS
  -----
@@ -193,37 +195,17 @@ PHASE I.2 BASIC OPTIMIZATIONS
    PERF is actually worse, most likely because those skipped pixels weren't expensive to compute in the first place and the added
     complexity and register usage affects all pixels
 
-- [optional ] russian roulette
-	
-- [optional] explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
-  this may reduce register usage and improve rendering performance
+- DONE russian roulette
+	PERF 350s > 290s (4m50s)
+ . using stats register usage goes down from 84 -> 79 !
+ . perf is worse without stats!!!
+
  . DONE print precomputation logic and understand how it works
  . design required changes
  . ...
 
- EXTRA (for now or later)
- -----
-- learn how to use Nsight and investigate which parts of the code use too much registers
-
 ----------------------------------------------------------------------------------------------------------
-PHASE I.3 ENHANCE RENDERER FEATURES
-----------------------------------------------------------------------------------------------------------
- GOAL
- ----
-- add features that are a must have for my renderer regardless of its performance
- . russian roulette
-
- TASKS
- -----
-- Use russian roulette to stop tracing low intensity paths
-  https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
-  user defines number of bounces before we start applying RR = RR_start_bounce
-  this can provide a 20% speedup and even more considering those bounces are most likely with high divergence
- . implement RMSE to measure quality loss for various RR_start_bounce
-   https://jacco.ompf2.com/2020/04/07/speeding-up-lighthouse-2/
-
-----------------------------------------------------------------------------------------------------------
-PHASE I.4 SUBSURFACE SCATTERING
+PHASE I.3 SUBSURFACE SCATTERING
 ----------------------------------------------------------------------------------------------------------
 
  NOTES

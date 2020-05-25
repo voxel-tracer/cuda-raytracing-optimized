@@ -5,7 +5,7 @@
 #include "triangle.h"
 #include "material.h"
 
-//#define STATS
+#define STATS
 #define RUSSIAN_ROULETTE
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
