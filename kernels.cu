@@ -228,42 +228,7 @@ __device__ void color(const RenderContext& context, path& p) {
         if (p.attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
         intersection inters;
-        if (hit(context, p, false, inters)) {
-#ifdef STATS
-            fromMesh = (inters.objId == TRIMESH);
-            if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
-#endif
-            if (inters.objId == LIGHT) {
-                // ray hit the light, compute its contribution and add it to the path's color
-                // do it naively for now
-                p.color += p.attenuation * context.lightColor;
-                return;
-            }
-
-            // update path.origin to point to the intersected point
-            p.origin = inters.p;
-
-            int matIdx = (inters.objId == TRIMESH) ? 0 : 1;
-            if (scatter(context.materials[matIdx], p, inters)) {
-                // trace shadow ray for diffuse rays
-                if (!p.specular && generateShadowRay(context, p, inters)) {
-#ifdef STATS
-                    context.rayStat(NUM_RAYS_SHADOWS);
-#endif
-                    if (!hit(context, p, true, inters)) {
-#ifdef STATS
-                        context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
-#endif
-                        // intersection point is illuminated by the light
-                        p.color += p.lightContribution;
-                    }
-                }
-            }
-            else {
-                return;
-            }
-        }
-        else {
+        if (!hit(context, p, false, inters)) {
 #ifdef STATS
             if (primary) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
             else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
@@ -273,24 +238,52 @@ __device__ void color(const RenderContext& context, path& p) {
                 vec3 dir = p.rayDir;
                 uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
                 vec3 c(
-                    context.hdri[(coords.y * 1024 + coords.x)*3],
-                    context.hdri[(coords.y * 1024 + coords.x)*3 + 1],
-                    context.hdri[(coords.y * 1024 + coords.x)*3 + 2]
+                    context.hdri[(coords.y * 1024 + coords.x) * 3],
+                    context.hdri[(coords.y * 1024 + coords.x) * 3 + 1],
+                    context.hdri[(coords.y * 1024 + coords.x) * 3 + 2]
                 );
                 p.color += p.attenuation * c;
-                return;
             }
             else {
-
-                // uniform sky color
-                //curColor += cur_attenuation; // sky is (1, 1, 1)
-                //return curColor;
-
                 // sky color
                 float t = 0.5f * (p.rayDir.z() + 1.0f);
                 vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
                 p.color += p.attenuation * c;
-                return;
+            }
+
+            break;
+        }
+
+#ifdef STATS
+        fromMesh = (inters.objId == TRIMESH);
+        if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
+#endif
+        if (inters.objId == LIGHT) {
+            // ray hit the light, compute its contribution and add it to the path's color
+            p.color += p.attenuation * context.lightColor;
+            break;
+        }
+
+        // update path.origin to point to the intersected point
+        p.origin = inters.p;
+
+        int matIdx = (inters.objId == TRIMESH) ? 0 : 1;
+        if (!scatter(context.materials[matIdx], p, inters)) {
+            // ray was fully absorbed
+            break;
+        }
+
+        // trace shadow ray for diffuse rays
+        if (!p.specular && generateShadowRay(context, p, inters)) {
+#ifdef STATS
+            context.rayStat(NUM_RAYS_SHADOWS);
+#endif
+            if (!hit(context, p, true, inters)) {
+#ifdef STATS
+                context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
+#endif
+                // intersection point is illuminated by the light
+                p.color += p.lightContribution;
             }
         }
 
