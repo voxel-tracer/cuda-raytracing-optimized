@@ -24,113 +24,69 @@ __device__ vec3 reflect(const vec3& v, const vec3& n) {
     return v - 2.0f * dot(v, n) * n;
 }
 
-__device__ bool scatter_lambertian(const vec3& albedo, path& p, const intersection& inters) {
-    p.rayDir = unit_vector(inters.normal + random_in_unit_sphere(p.rng));
-    p.attenuation *= albedo;
-    p.specular = false;
-    return true;
+__device__ void diffuse_bsdf(scatter_info& out, const intersection& i, const vec3& albedo, rand_state& rng) {
+    out.wi = unit_vector(i.normal + random_in_unit_sphere(rng));
+    out.throughput = albedo;
+    out.specular = false;
+}
+
+__device__ bool checker_layer(const intersection& i, float frequency) {
+    auto sines = sin(frequency * i.p.x()) * sin(frequency * i.p.y()) * sin(frequency * i.p.z());
+    return sines < 0;
 }
 
 // simplified checker that assumes a plane with normal = (0, 0, 1)
-__device__ bool scatter_checker(const vec3& albedo1, const vec3& albedo2, float frequency, path& p, const intersection& inters) {
-    auto sines = sin(frequency * inters.p.x()) * sin(frequency * inters.p.y()) * sin(frequency * inters.p.z());
-    if (sines < 0)
-        return scatter_lambertian(albedo1, p, inters);
+__device__ void scatter_checker(scatter_info & out, const intersection& i, float frequency, const vec3& albedo1, const vec3& albedo2, rand_state& rng) {
+    if (checker_layer(i, frequency))
+        diffuse_bsdf(out, i, albedo1, rng);
     else
-        return scatter_lambertian(albedo2, p, inters);
+        diffuse_bsdf(out, i, albedo2, rng);
 }
 
-__device__ bool scatter_metal(const vec3& albedo, float fuzz, path& p, const intersection& inters) {
-    vec3 reflected = reflect(p.rayDir, inters.normal);
-    vec3 scatterDir = reflected + fuzz * random_in_unit_sphere(p.rng);
-    if (dot(scatterDir, inters.normal) <= 0.0f) return false;
-
-    p.rayDir = unit_vector(scatterDir);
-    p.attenuation *= albedo;
-    p.specular = true;
-    return true;
+__device__ void glossy_bsdf(scatter_info &out, const intersection& i, const vec3& wo, const vec3& tint, float fuzz, rand_state& rng) {
+    vec3 reflected = reflect(wo, i.normal);
+    if (fuzz > 0.0001f)
+        reflected += fuzz * random_in_unit_sphere(rng);
+    out.wi = unit_vector(reflected);
+    out.throughput = tint;
+    out.specular = true;
 }
 
-__device__ bool scatter_dielectric(float ref_idx, path& p, const intersection& inters) {
-    p.specular = true;
-
-    bool frontFace = dot(p.rayDir, inters.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? inters.normal : -inters.normal;
-    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
-
-    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
+__device__ bool fresnel_layer(const intersection& i, const vec3& wo, float ior, rand_state& rng) {
+    float etai_over_etat = i.frontFace ? (1.0f / ior) : ior;
+    float cos_theta = fminf(dot(-wo, i.normal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-    } else {
-        p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
-    }
-
-    return true;
+    return (etai_over_etat * sin_theta > 1.0f || rnd(rng) < schlick(cos_theta, etai_over_etat));
 }
 
-__device__ bool scatter_coat(const vec3& albedo, float ref_idx, path& p, const intersection& inters) {
-    p.specular = true;
-    bool frontFace = dot(p.rayDir, inters.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? inters.normal : -inters.normal;
-    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
-
-    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
-    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-        return true;
+__device__ void coat_bsdf(scatter_info& out, const intersection& i, const vec3& wo, float layer_ior, const vec3& glossy_tint, float glossy_fuzz, const vec3& diffuse_albedo, rand_state& rng) {
+    if (fresnel_layer(i, wo, layer_ior, rng)) {
+        // ray will be reflected by the glossy bsdf
+        glossy_bsdf(out, i, wo, glossy_tint, glossy_fuzz, rng);
     } else {
-        return scatter_lambertian(albedo, p, inters);
+        // ray will be reflected by the diffuse bsdf
+        diffuse_bsdf(out, i, diffuse_albedo, rng);
     }
 }
 
 // based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
-__device__ bool scatter_tinted_glass(float ref_idx, const vec3& absorptionCoefficient, path& p, const intersection& inters) {
-    p.specular = true;
+__device__ void dielectric_bsdf(scatter_info& out, const intersection& i, const vec3& wo, float layer_ior, const vec3& glossy_tint, float glossy_fuzz, const vec3& absorptionCoefficient, rand_state& rng) {
+    if (fresnel_layer(i, wo, layer_ior, rng)) {
+        // ray will be reflected by the glossy bsdf
+        glossy_bsdf(out, i, wo, glossy_tint, glossy_fuzz, rng);
+    }
+    else {
+        // ray will be refracted
+        float etai_over_etat = i.frontFace ? (1.0f / layer_ior) : layer_ior;
+        out.wi = unit_vector(refract(wo, i.normal, etai_over_etat));
+    }
 
-    bool frontFace = dot(p.rayDir, inters.normal) < 0.0f;
-    vec3 hitNormal = frontFace ? inters.normal : -inters.normal;
-    float etai_over_etat = frontFace ? (1.0f / ref_idx) : ref_idx;
-
-    if (!frontFace) {
+    if (!i.frontFace) {
         // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
-        p.attenuation *= exp(-absorptionCoefficient * inters.t);
+        out.throughput = exp(-absorptionCoefficient * i.t);
     }
 
-    float cos_theta = fminf(dot(-p.rayDir, hitNormal), 1.0f);
-    float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-    if (etai_over_etat * sin_theta > 1.0f || rnd(p.rng) < schlick(cos_theta, etai_over_etat)) {
-        p.rayDir = unit_vector(reflect(p.rayDir, hitNormal));
-    } else {
-        p.rayDir = unit_vector(refract(p.rayDir, hitNormal, etai_over_etat));
-    }
-
-    return true;
-}
-
-// p.origin is assumed to be set to the intersection point
-// scatter() will compute p.rayDir and set shadow to true if a shadow ray should be generated
-//
-// TODO introduce path.specular that can be used to decide if we should trace shadow rays and intersect with the light when tracing the next ray
-__device__ bool scatter(const material& m, path& p, const intersection& inters) {
-    switch (m.type)
-    {
-    case LAMBERTIAN:
-        return scatter_lambertian(m.albedo, p, inters);
-    case DIELECTRIC:
-        return scatter_dielectric(m.ref_idx, p, inters);
-    case TINTED_GLASS:
-        return scatter_tinted_glass(m.ref_idx, m.absorptionCoefficient, p, inters);
-    case METAL:
-        return scatter_metal(m.albedo, m.fuzz, p, inters);
-    case COAT:
-        return scatter_coat(m.albedo, m.ref_idx, p, inters);
-    case CHECKER:
-        return scatter_checker(m.albedo, m.albedo2, m.frequency, p, inters);
-    default:
-        return false;
-    }
+    out.specular = true;
 }
 
 #endif

@@ -49,12 +49,12 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
-vec3 hexColor(int hexValue) {
-    float r = ((hexValue >> 16) & 0xFF);
-    float g = ((hexValue >> 8) & 0xFF);
-    float b = ((hexValue) & 0xFF);
-    return vec3(r, g, b) / 255.0;
-}
+//vec3 hexColor(int hexValue) {
+//    float r = ((hexValue >> 16) & 0xFF);
+//    float g = ((hexValue >> 8) & 0xFF);
+//    float b = ((hexValue) & 0xFF);
+//    return vec3(r, g, b) / 255.0;
+//}
 
 void buildGrid(mesh& m, float cellSize) {
     // compute grid size in cells
@@ -218,7 +218,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
     return true;
 }
-
+/*
 void setupMaterials(material** h_materials, uint16_t& numMats) {
     // create a single material for all triangles
     unsigned int rand_state = 0;
@@ -245,6 +245,7 @@ void setupMaterials(material** h_materials, uint16_t& numMats) {
     (*h_materials)[1] = new_coat(floorColor1, 1.5f);
 #endif // CUBE
 }
+*/
 
 void loadHDRiEnvMap(const char *filename) {
     int x, y, n;
@@ -261,7 +262,7 @@ void loadHDRiEnvMap(const char *filename) {
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     bool interpolateNormals = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
@@ -278,8 +279,6 @@ int main() {
     {
         plane floor;
         mesh m;
-        material* materials;
-        uint16_t numMats;
 #ifdef CUBE
         if (!setupScene("D:\\models\\lowpoly\\cube.obj", m, floor)) return -1;
 #else
@@ -289,17 +288,15 @@ int main() {
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
         buildGrid(m, 10);
-        setupMaterials(&materials, numMats);
 
         camera cam = setup_camera(nx, ny);
 
         // setup floor
-        initRenderer(m, materials, numMats, floor, cam, &fb, nx, ny, interpolateNormals);
+        initRenderer(m, floor, cam, &fb, nx, ny, interpolateNormals);
         delete[] m.tris;
         delete[] m.norms;
         delete[] m.g.C;
         delete[] m.g.L;
-        delete[] materials;
 
         //loadHDRiEnvMap("lebombo_1k.hdr");
     }

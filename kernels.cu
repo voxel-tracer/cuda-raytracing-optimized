@@ -2,7 +2,7 @@
 #include "rnd.h"
 #include "vec3.h"
 #include "camera.h"
-#include "triangle.h"
+#include "intersections.h"
 #include "material.h"
 
 #define STATS
@@ -61,8 +61,6 @@ struct RenderContext {
     int ny;
     int ns;
     camera cam;
-    material* materials;
-    uint16_t numMats;
     float* hdri = NULL;
     plane floor;
 
@@ -157,7 +155,6 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
-        inters.p = r.point_at_parameter(inters.t);
         if (context.interpolateNormals) {
             vec3 n0 = context.modelNorms[triHit.triId * 3];
             vec3 n1 = context.modelNorms[triHit.triId * 3 + 1];
@@ -176,13 +173,17 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
 
         if ((inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
             inters.objId = PLANE;
-            inters.p = r.point_at_parameter(inters.t);
             inters.normal = context.floor.norm;
         }
         else if (p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
             inters.objId = LIGHT;
+            return true; // we don't need to compute p and update normal to face the ray
         }
     }
+
+    inters.p = r.point_at_parameter(inters.t);
+    inters.frontFace = dot(p.rayDir, inters.normal) < 0.0f;
+    if (!inters.frontFace) inters.normal = -inters.normal;
 
     return inters.objId != NONE;
 }
@@ -212,6 +213,29 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
     p.lightContribution = p.attenuation * context.lightColor * dotl * omega / M_PI;
 
     return true;
+}
+
+__device__ vec3 hexColor(int hexValue) {
+    float r = ((hexValue >> 16) & 0xFF);
+    float g = ((hexValue >> 8) & 0xFF);
+    float b = ((hexValue) & 0xFF);
+    return vec3(r, g, b) / 255.0;
+}
+
+__device__ void scatter_floor(scatter_info &out, const intersection& i, const vec3& wo, rand_state& rng) {
+    float ior = 1.5f;
+    vec3 glossy_tint(1, 1, 1); // colorless reflections
+    float glossy_fuzz = 0.0f;
+    vec3 base_color = hexColor(0x511845);
+    coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
+}
+
+__device__ void scatter_model(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
+    float ior = 1.1f;
+    vec3 glossy_tint(1, 1, 1); // colorless reflections
+    float glossy_fuzz = 0.0f;
+    vec3 base_color(0.0972942f, 0.0482054f, 0.000273194f);
+    coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
 }
 
 __device__ void color(const RenderContext& context, path& p) {
@@ -267,11 +291,15 @@ __device__ void color(const RenderContext& context, path& p) {
         // update path.origin to point to the intersected point
         p.origin = inters.p;
 
-        int matIdx = (inters.objId == TRIMESH) ? 0 : 1;
-        if (!scatter(context.materials[matIdx], p, inters)) {
-            // ray was fully absorbed
-            break;
-        }
+        scatter_info scatter;
+        if (inters.objId == TRIMESH)
+            scatter_model(scatter, inters, p.rayDir, p.rng);
+        else 
+            scatter_floor(scatter, inters, p.rayDir, p.rng);
+
+        p.rayDir = scatter.wi;
+        p.attenuation *= scatter.throughput;
+        p.specular = scatter.specular;
 
         // trace shadow ray for diffuse rays
         if (!p.specular && generateShadowRay(context, p, inters)) {
@@ -331,7 +359,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor, const camera cam, vec3 **fb, int nx, int ny, bool interpolateNormals) {
+initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int ny, bool interpolateNormals) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
@@ -340,11 +368,6 @@ initRenderer(const mesh m, material* h_materials, uint16_t numMats, plane floor,
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
-
-    // all triangles share the same material
-    checkCudaErrors(cudaMalloc((void**)&renderContext.materials, numMats * sizeof(material)));
-    checkCudaErrors(cudaMemcpy(renderContext.materials, h_materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
-    renderContext.numMats = numMats;
 
     checkCudaErrors(cudaMemcpyToSymbol(d_triangles, m.tris, m.numTris * 3 * sizeof(vec3)));
     renderContext.numTris = m.numTris;
@@ -385,7 +408,6 @@ runRenderer(int ns, int tx, int ty) {
 extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
-    checkCudaErrors(cudaFree(renderContext.materials));
     checkCudaErrors(cudaFree(renderContext.fb));
     checkCudaErrors(cudaFree(renderContext.modelNorms));
     if (renderContext.hdri != NULL) checkCudaErrors(cudaFree(renderContext.hdri));
