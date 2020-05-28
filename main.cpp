@@ -49,13 +49,6 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
-//vec3 hexColor(int hexValue) {
-//    float r = ((hexValue >> 16) & 0xFF);
-//    float g = ((hexValue >> 8) & 0xFF);
-//    float b = ((hexValue) & 0xFF);
-//    return vec3(r, g, b) / 255.0;
-//}
-
 void buildGrid(mesh& m, float cellSize) {
     // compute grid size in cells
     vec3 gridSize = ceil((m.bounds.max - m.bounds.min) / cellSize);
@@ -219,19 +212,6 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
     return true;
 }
 
-void loadHDRiEnvMap(const char *filename) {
-    int x, y, n;
-    float* data = stbi_loadf(filename, &x, &y, &n, 0);
-    float max = 0;
-    for (int i = 0; i < (x * y * n); i++) {
-        max = fmaxf(max, data[i]);
-    }
-
-    std::cerr << "hdri(x = " << x << ", y = " << y << ", n = " << n << "). max = " << max << std::endl;
-    initHDRi(data, x, y, n);
-    stbi_image_free(data);
-}
-
 int main() {
     bool perf = false;
     bool fast = true;
@@ -269,8 +249,6 @@ int main() {
         delete[] m.norms;
         delete[] m.g.C;
         delete[] m.g.L;
-
-        //loadHDRiEnvMap("small_cave_1k.hdr");
     }
 
     clock_t start, stop;

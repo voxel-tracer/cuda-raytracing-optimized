@@ -62,7 +62,6 @@ struct RenderContext {
     int ny;
     int ns;
     camera cam;
-    float* hdri = NULL;
     plane floor;
 
     sphere light = sphere(vec3(-2000, 0, 5000), 500);
@@ -235,23 +234,10 @@ __device__ void color(const RenderContext& context, path& p) {
             if (primary) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
             else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
 #endif
-            if (context.hdri != NULL) {
-                // environment map
-                vec3 dir = p.rayDir;
-                uint2 coords = make_uint2(-atan2(dir.x(), dir.y()) * 1024 / (2 * M_PI), acos(dir.z()) * 512 / M_PI);
-                vec3 c(
-                    context.hdri[(coords.y * 1024 + coords.x) * 3],
-                    context.hdri[(coords.y * 1024 + coords.x) * 3 + 1],
-                    context.hdri[(coords.y * 1024 + coords.x) * 3 + 2]
-                );
-                p.color += p.attenuation * c;
-            }
-            else {
-                // sky color
-                float t = 0.5f * (p.rayDir.z() + 1.0f);
-                vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-                p.color += p.attenuation * c;
-            }
+            // sky color
+            float t = 0.5f * (p.rayDir.z() + 1.0f);
+            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+            p.color += p.attenuation * c;
 
             break;
         }
@@ -363,12 +349,6 @@ initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int
     renderContext.initStats();
 }
 
-extern "C" 
-void initHDRi(float* data, int x, int y, int n) {
-    checkCudaErrors(cudaMalloc((void**)&renderContext.hdri, x * y * n * sizeof(float)));
-    checkCudaErrors(cudaMemcpy(renderContext.hdri, data, x * y * n * sizeof(float), cudaMemcpyHostToDevice));
-}
-
 extern "C" void
 runRenderer(int ns, int tx, int ty) {
     renderContext.ns = ns;
@@ -388,7 +368,6 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(renderContext.fb));
     checkCudaErrors(cudaFree(renderContext.modelNorms));
-    if (renderContext.hdri != NULL) checkCudaErrors(cudaFree(renderContext.hdri));
 
     cudaDeviceReset();
 }
