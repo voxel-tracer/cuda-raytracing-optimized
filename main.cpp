@@ -218,34 +218,6 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
     return true;
 }
-/*
-void setupMaterials(material** h_materials, uint16_t& numMats) {
-    // create a single material for all triangles
-    unsigned int rand_state = 0;
-
-    numMats = 2;
-    *h_materials = new material[numMats];
-    const vec3 modelColor(RND * RND, RND * RND, RND * RND);
-    const vec3 floorColor1 = hexColor(0x511845);
-    const vec3 floorColor2 = hexColor(0xff5733);
-
-    //(*h_materials)[0] = new_dielectric(1.5);
-    //(*h_materials)[0] = new_lambertian(modelColor);
-    //(*h_materials)[0] = new_metal(modelColor, 0.2);
-    (*h_materials)[0] = new_coat(modelColor, 1.1f);
-    //(*h_materials)[0] = new_coat(modelColor, 1.5f);
-    //(*h_materials)[0] = new_tintedGlass(modelColor, 10.0f, 1.1f);
-
-#ifdef CUBE
-    (*h_materials)[1] = new_checker(floorColor1, floorColor2, 2.0f);
-#else
-    //(*h_materials)[1] = new_checker(floorColor1, floorColor2, 0.2f);
-    //(*h_materials)[1] = new_lambertian(floorColor1);
-    //(*h_materials)[1] = new_metal(floorColor1, 0.2);
-    (*h_materials)[1] = new_coat(floorColor1, 1.5f);
-#endif // CUBE
-}
-*/
 
 void loadHDRiEnvMap(const char *filename) {
     int x, y, n;
@@ -298,7 +270,7 @@ int main() {
         delete[] m.g.C;
         delete[] m.g.L;
 
-        loadHDRiEnvMap("small_cave_1k.hdr");
+        //loadHDRiEnvMap("small_cave_1k.hdr");
     }
 
     clock_t start, stop;

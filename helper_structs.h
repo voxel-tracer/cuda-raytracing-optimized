@@ -90,41 +90,6 @@ struct tri_hit {
     float u, v;
 };
 
-enum material_type 
-{
-    LAMBERTIAN,
-    DIELECTRIC,
-    METAL,
-    COAT,
-    CHECKER,
-    TINTED_GLASS
-};
-
-struct material 
-{
-    material() {}
-    material(material_type t, vec3 a, vec3 b, float f) : type(t), albedo(a), albedo2(b), fuzz(f) {}
-
-    material_type type;
-    union {
-        vec3 albedo;
-        vec3 absorptionCoefficient;
-    };
-    vec3 albedo2;
-    union {
-        float fuzz;
-        float ref_idx;
-        float frequency;
-    };
-};
-
-material new_lambertian(vec3 albedo);
-material new_dielectric(float ref_idx);
-material new_metal(vec3 albedo, float fuzz);
-material new_coat(vec3 albedo, float ref_idx);
-material new_checker(vec3 albedo, vec3 albedo2, float frequency);
-material new_tintedGlass(vec3 absorptionColor, float absorptionDistance, float ref_idx);
-
 struct camera
 {
     camera() {}

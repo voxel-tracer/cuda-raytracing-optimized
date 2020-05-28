@@ -18,12 +18,12 @@
     <ClInclude Include="ray.h" />
     <ClInclude Include="rnd.h" />
     <ClInclude Include="intersections.h" />
+    <ClInclude Include="scene_materials.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="vec3.h" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="kernels.cu" />
-    <ClCompile Include="helper_structs.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
