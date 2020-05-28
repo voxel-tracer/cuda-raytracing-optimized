@@ -298,7 +298,7 @@ int main() {
         delete[] m.g.C;
         delete[] m.g.L;
 
-        //loadHDRiEnvMap("lebombo_1k.hdr");
+        loadHDRiEnvMap("small_cave_1k.hdr");
     }
 
     clock_t start, stop;

@@ -223,19 +223,21 @@ __device__ vec3 hexColor(int hexValue) {
 }
 
 __device__ void scatter_floor(scatter_info &out, const intersection& i, const vec3& wo, rand_state& rng) {
-    float ior = 1.5f;
-    vec3 glossy_tint(1, 1, 1); // colorless reflections
-    float glossy_fuzz = 0.0f;
+    //float ior = 1.5f;
+    //vec3 glossy_tint(1, 1, 1); // colorless reflections
+    //float glossy_fuzz = 0.0f;
     vec3 base_color = hexColor(0x511845);
-    coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
+    //coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
+    diffuse_bsdf(out, i, base_color, rng);
 }
 
 __device__ void scatter_model(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
     float ior = 1.1f;
     vec3 glossy_tint(1, 1, 1); // colorless reflections
     float glossy_fuzz = 0.0f;
-    vec3 base_color(0.0972942f, 0.0482054f, 0.000273194f);
-    coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
+    //vec3 base_color(0.0972942f, 0.0482054f, 0.000273194f);
+    //coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
+    glossy_bsdf(out, i, wo, glossy_tint, glossy_fuzz, rng);
 }
 
 __device__ void color(const RenderContext& context, path& p) {
