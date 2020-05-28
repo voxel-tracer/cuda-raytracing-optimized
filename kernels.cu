@@ -181,11 +181,14 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         }
     }
 
-    inters.p = r.point_at_parameter(inters.t);
-    inters.frontFace = dot(p.rayDir, inters.normal) < 0.0f;
-    if (!inters.frontFace) inters.normal = -inters.normal;
+    if (inters.objId != NONE) {
+        inters.p = r.point_at_parameter(inters.t);
+        inters.frontFace = dot(p.rayDir, inters.normal) < 0.0f;
+        if (!inters.frontFace) inters.normal = -inters.normal;
+        return true;
+    }
 
-    return inters.objId != NONE;
+    return false;
 }
 
 __device__ bool generateShadowRay(const RenderContext& context, path& p, const intersection &inters) {
@@ -252,15 +255,13 @@ __device__ void color(const RenderContext& context, path& p) {
             break;
         }
 
-        // update path.origin to point to the intersected point
-        p.origin = inters.p;
-
         scatter_info scatter;
         if (inters.objId == TRIMESH)
-            model_tintedglass_scatter(scatter, inters, p.rayDir, p.rng);
+            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_checker_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
 
+        p.origin = inters.p;
         p.rayDir = scatter.wi;
         p.attenuation *= scatter.throughput;
         p.specular = scatter.specular;

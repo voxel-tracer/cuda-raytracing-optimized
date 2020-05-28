@@ -214,7 +214,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
 int main() {
     bool perf = false;
-    bool fast = true;
+    bool fast = false;
     bool interpolateNormals = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
