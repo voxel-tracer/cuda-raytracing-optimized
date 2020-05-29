@@ -215,7 +215,6 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 int main() {
     bool perf = false;
     bool fast = false;
-    bool interpolateNormals = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
     int ns = !perf ? (fast ? 40 : 4096) : 4;
@@ -244,7 +243,7 @@ int main() {
         camera cam = setup_camera(nx, ny);
 
         // setup floor
-        initRenderer(m, floor, cam, &fb, nx, ny, interpolateNormals);
+        initRenderer(m, floor, cam, &fb, nx, ny);
         delete[] m.tris;
         delete[] m.norms;
         delete[] m.g.C;

@@ -42,6 +42,11 @@ __device__ void model_coat_scatter(scatter_info& out, const intersection& i, con
     coat_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, base_color, rng);
 }
 
+__device__ void model_diffuse_scatter(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
+    vec3 base_color(0.0972942f, 0.0482054f, 0.000273194f);
+    diffuse_bsdf(out, i, base_color, rng);
+}
+
 __device__ void model_glossy_scatter(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
     vec3 glossy_tint(1, 1, 1); // colorless reflections
     float glossy_fuzz = 0.0f;
