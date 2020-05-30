@@ -9,6 +9,8 @@
 #define STATS
 #define RUSSIAN_ROULETTE
 
+#define EPSILON 0.001f
+
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
@@ -149,7 +151,7 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     tri_hit triHit;
     bool primary = p.bounce == 0;
     inters.objId = NONE;
-    if ((inters.t = hitMesh(r, context, 0.001f, FLT_MAX, triHit, primary, isShadow)) < FLT_MAX) {
+    if ((inters.t = hitMesh(r, context, EPSILON, FLT_MAX, triHit, primary, isShadow)) < FLT_MAX) {
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
@@ -161,11 +163,11 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
 
-        if ((inters.t = planeHit(context.floor, r, 0.001f, FLT_MAX)) < FLT_MAX) {
+        if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
             inters.objId = PLANE;
             inters.normal = context.floor.norm;
         }
-        else if (p.specular && sphereHit(context.light, r, 0.001f, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        else if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
         }
