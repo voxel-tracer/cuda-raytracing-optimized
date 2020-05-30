@@ -9,7 +9,7 @@
 #define STATS
 #define RUSSIAN_ROULETTE
 
-#define EPSILON 0.001f
+#define EPSILON 0.01f
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
