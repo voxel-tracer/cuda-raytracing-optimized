@@ -3,6 +3,8 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
+//#define PATH_DBG
+
 typedef unsigned int rand_state;
 
 struct intersection {
@@ -32,6 +34,9 @@ struct path {
     uint8_t bounce;
     vec3 attenuation;
     rand_state rng;
+#ifdef PATH_DBG
+    bool dbg = false;
+#endif
 };
 
 struct bbox {

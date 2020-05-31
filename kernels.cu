@@ -225,6 +225,9 @@ __device__ void color(const RenderContext& context, path& p) {
 #endif
         intersection inters;
         if (!hit(context, p, false, inters)) {
+#ifdef PATH_DBG
+            if (p.dbg) printf("bounce %d: NO_HIT\n", p.bounce);
+#endif
 #ifdef STATS
             if (primary) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
             else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
@@ -242,16 +245,21 @@ __device__ void color(const RenderContext& context, path& p) {
         if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
 #endif
         if (inters.objId == LIGHT) {
+#ifdef PATH_DBG
+            if (p.dbg) printf("bounce %d: HIT LIGHT\n", p.bounce);
+#endif
             // ray hit the light, compute its contribution and add it to the path's color
             p.color += p.attenuation * context.lightColor;
             break;
         }
-
+#ifdef PATH_DBG
+        if (p.dbg) printf("bounce %d: HIT %d at t %f with normal (%f, %f, %f)\n", p.bounce, inters.objId, inters.t, inters.normal.x(), inters.normal.y(), inters.normal.z());
+#endif
         scatter_info scatter;
         if (inters.objId == TRIMESH)
-            model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
 
         p.origin = inters.p;
         p.rayDir = scatter.wi;
@@ -260,10 +268,16 @@ __device__ void color(const RenderContext& context, path& p) {
 
         // trace shadow ray for diffuse rays
         if (!p.specular && generateShadowRay(context, p, inters)) {
+#ifdef PATH_DBG
+            if (p.dbg) printf("bounce %d: SHADOW\n", p.bounce);
+#endif
 #ifdef STATS
             context.rayStat(NUM_RAYS_SHADOWS);
 #endif
             if (!hit(context, p, true, inters)) {
+#ifdef PATH_DBG
+                if (p.dbg) printf("bounce %d: SHADOW NO HIT\n", p.bounce);
+#endif
 #ifdef STATS
                 context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
 #endif
@@ -277,6 +291,9 @@ __device__ void color(const RenderContext& context, path& p) {
         if (p.bounce > 3) {
             float m = max(p.attenuation);
             if (rnd(p.rng) > m) {
+#ifdef PATH_DBG
+                if (p.dbg) printf("bounce %d: RUSSIAN ROULETTE BREAK\n", p.bounce);
+#endif
                 break;
             }
             p.attenuation *= 1 / m;
@@ -294,7 +311,10 @@ __global__ void render(const RenderContext context) {
     path p;
     p.pixelId = j * context.nx + i;
     p.rng = (wang_hash(p.pixelId) * 336343633) | 1;
-
+#ifdef PATH_DBG
+    const int dbgId = (context.ny - 308) * context.nx + 164;
+    p.dbg = p.pixelId == dbgId;
+#endif
     vec3 col(0, 0, 0); // this is specific to the pixel so it should be stored separately from the path
     for (int s = 0; s < context.ns; s++) {
         float u = float(i + rnd(p.rng)) / float(context.nx);
