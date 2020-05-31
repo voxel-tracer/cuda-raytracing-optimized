@@ -207,17 +207,17 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
     }
 
     // setup floor
-    floor = plane(vec3(0, 0, -0.001), vec3(0, 0, 1));
+    floor = plane(vec3(0, 0, -0.01), vec3(0, 0, 1));
 
     return true;
 }
 
 int main() {
-    bool perf = true;
+    bool perf = false;
     bool fast = false;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 40 : 4096) : 1;
+    int ns = !perf ? (fast ? 40 : 4096) : 4;
     int tx = 8;
     int ty = 8;
 

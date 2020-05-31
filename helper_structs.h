@@ -12,13 +12,14 @@ struct intersection {
     float t;
     vec3 p;
     vec3 normal; // always faces the ray
-    bool frontFace; // true if intersected plane faces the ray (dot(ray.dir, normal) < 0)
+    bool inside; // true if current path is inside the model
 };
 
 struct scatter_info {
     vec3 wi;
     bool specular = false;
     vec3 throughput = vec3(1, 1, 1);
+    bool refracted = false;
 };
 
 struct path {
@@ -34,6 +35,7 @@ struct path {
     uint8_t bounce;
     vec3 attenuation;
     rand_state rng;
+    bool inside = false;
 #ifdef PATH_DBG
     bool dbg = false;
 #endif

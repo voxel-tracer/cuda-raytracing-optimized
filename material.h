@@ -53,7 +53,7 @@ __device__ void glossy_bsdf(scatter_info &out, const intersection& i, const vec3
 }
 
 __device__ bool fresnel_layer(const intersection& i, const vec3& wo, float ior, rand_state& rng) {
-    float etai_over_etat = i.frontFace ? (1.0f / ior) : ior;
+    float etai_over_etat = i.inside ? ior : (1.0f / ior);
     float cos_theta = fminf(dot(-wo, i.normal), 1.0f);
     float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
     return (etai_over_etat * sin_theta > 1.0f || rnd(rng) < schlick(cos_theta, etai_over_etat));
@@ -77,11 +77,12 @@ __device__ void dielectric_bsdf(scatter_info& out, const intersection& i, const 
     }
     else {
         // ray will be refracted
-        float etai_over_etat = i.frontFace ? (1.0f / layer_ior) : layer_ior;
+        float etai_over_etat = i.inside ? layer_ior : (1.0f / layer_ior);
         out.wi = unit_vector(refract(wo, i.normal, etai_over_etat));
+        out.refracted = true;
     }
 
-    if (!i.frontFace) {
+    if (i.inside) {
         // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
         out.throughput = exp(-absorptionCoefficient * i.t);
     }

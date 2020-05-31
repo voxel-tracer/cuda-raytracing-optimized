@@ -6,7 +6,7 @@
 #include "material.h"
 #include "scene_materials.h"
 
-#define STATS
+#define STATS 
 #define RUSSIAN_ROULETTE
 
 #define EPSILON 0.01f
@@ -175,8 +175,8 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
 
     if (inters.objId != NONE) {
         inters.p = r.point_at_parameter(inters.t);
-        inters.frontFace = dot(p.rayDir, inters.normal) < 0.0f;
-        if (!inters.frontFace) inters.normal = -inters.normal;
+        if (dot(r.direction(), inters.normal) > 0.0f)
+            inters.normal = -inters.normal; // ensure normal is always facing the ray
         return true;
     }
 
@@ -255,16 +255,20 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef PATH_DBG
         if (p.dbg) printf("bounce %d: HIT %d at t %f with normal (%f, %f, %f)\n", p.bounce, inters.objId, inters.t, inters.normal.x(), inters.normal.y(), inters.normal.z());
 #endif
+
+        inters.inside = p.inside;
+
         scatter_info scatter;
         if (inters.objId == TRIMESH)
-            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            model_tintedglass_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 
         p.origin = inters.p;
         p.rayDir = scatter.wi;
         p.attenuation *= scatter.throughput;
         p.specular = scatter.specular;
+        p.inside = scatter.refracted ? !p.inside : p.inside;
 
         // trace shadow ray for diffuse rays
         if (!p.specular && generateShadowRay(context, p, inters)) {
@@ -323,6 +327,7 @@ __global__ void render(const RenderContext context) {
         p.origin = r.origin();
         p.rayDir = r.direction();
         p.specular = false;
+        p.inside = false;
         color(context, p);
         // once color() is done, p.color will contain all the light received through p
         col += p.color;
