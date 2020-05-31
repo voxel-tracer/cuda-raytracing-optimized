@@ -48,7 +48,7 @@ __device__ void glossy_bsdf(scatter_info &out, const intersection& i, const vec3
     if (fuzz > 0.0001f)
         reflected += fuzz * random_in_unit_sphere(rng);
     out.wi = unit_vector(reflected);
-    out.throughput = tint;
+    out.throughput *= tint;
     out.specular = true;
 }
 
@@ -71,6 +71,12 @@ __device__ void coat_bsdf(scatter_info& out, const intersection& i, const vec3& 
 
 // based off https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
 __device__ void dielectric_bsdf(scatter_info& out, const intersection& i, const vec3& wo, float layer_ior, const vec3& glossy_tint, float glossy_fuzz, const vec3& absorptionCoefficient, rand_state& rng) {
+
+    if (i.inside) {
+        // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
+        out.throughput = exp(-absorptionCoefficient * i.t);
+    }
+
     if (fresnel_layer(i, wo, layer_ior, rng)) {
         // ray will be reflected by the glossy bsdf
         glossy_bsdf(out, i, wo, glossy_tint, glossy_fuzz, rng);
@@ -80,11 +86,6 @@ __device__ void dielectric_bsdf(scatter_info& out, const intersection& i, const 
         float etai_over_etat = i.inside ? layer_ior : (1.0f / layer_ior);
         out.wi = unit_vector(refract(wo, i.normal, etai_over_etat));
         out.refracted = true;
-    }
-
-    if (i.inside) {
-        // ray exiting model, compute absorption. rec.t being the distance travelled inside the model
-        out.throughput = exp(-absorptionCoefficient * i.t);
     }
 
     out.specular = true;
