@@ -196,19 +196,16 @@ PHASE I.2 BASIC OPTIMIZATIONS
     complexity and register usage affects all pixels
 
 - DONE russian roulette
-	PERF 350s > nDEBUG (4m50s)
+	PERF 350s > 290s (4m50s)
  . using stats register usage goes down from 84 -> 79 !
  . perf is worse without stats!!!
 
- . DONE print precomputation logic and understand how it works
- . design required changes
- . ...
-
-- Investigate rendering artifacts
- . DONE there is an issue when interpolating normals, edges are no longer handled properly
- . DONE remove normal interpolation for now
- . measure performance of code before/after material refactoring
- . there is still a slight difference in stats after material refactoring, investigate that to confirm its not a bug
+- investigate stat diff after material refactoring
+  one issue was caused by epsilon too small causing self intersections
+  some faces have a wrong orientation causing the renderer to interpret their intersection as exiting from model
+ . refactor logic to always reorient normal and use other ways to identify entry/exit from model
+ . fixing this issue reduced register usage to 79 and 
+	PERF 290s > 278s (4m38s)
 
 ----------------------------------------------------------------------------------------------------------
 PHASE I.3 SUBSURFACE SCATTERING
