@@ -56,7 +56,6 @@ __device__ __constant__ uint16_t d_gridL[kMaxL];
 
 struct RenderContext {
     vec3* fb;
-    vec3* modelNorms;
     uint16_t numTris;
     bbox bounds;
     grid g;
@@ -260,9 +259,9 @@ __device__ void color(const RenderContext& context, path& p) {
 
         scatter_info scatter;
         if (inters.objId == TRIMESH)
-            model_tintedglass_scatter(scatter, inters, p.rayDir, p.rng);
+            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
 
         p.origin = inters.p;
         p.rayDir = scatter.wi;
@@ -354,9 +353,6 @@ initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int
     renderContext.numTris = m.numTris;
     renderContext.bounds = m.bounds;
 
-    checkCudaErrors(cudaMalloc((void**)&renderContext.modelNorms, m.numTris * 3 * sizeof(vec3)));
-    checkCudaErrors(cudaMemcpy(renderContext.modelNorms, m.norms, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
-
     // copy grid to gpu
     renderContext.g = m.g;
     checkCudaErrors(cudaMemcpyToSymbol(d_gridC, m.g.C, m.g.sizeC() * sizeof(uint16_t)));
@@ -384,7 +380,6 @@ extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(renderContext.fb));
-    checkCudaErrors(cudaFree(renderContext.modelNorms));
 
     cudaDeviceReset();
 }

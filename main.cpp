@@ -166,12 +166,11 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
     // loop over shapes and copy all triangles to array
     m.tris = new vec3[m.numTris * 3];
-    m.norms = new vec3[m.numTris * 3];
-    uint16_t vec_index = 0;
+    uint16_t triIdx = 0;
     for (auto s = 0; s < shapes.size(); s++) {
         // loop over faces
         size_t index_offset = 0;
-        for (auto f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+        for (auto f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++, triIdx++) {
             int fv = shapes[s].mesh.num_face_vertices[f];
             if (fv != 3)
                 std::cerr << "face " << f << " of shape " << s << " has " << fv << " vertices" << std::endl;
@@ -184,13 +183,8 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
 
-                tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
-                tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
-                tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
-
                 vec3 tri(vx, vy, vz);
-                m.norms[vec_index] = vec3(nx, ny, nz);
-                m.tris[vec_index++] = tri;
+                m.tris[triIdx * 3 + v] = tri;
 
                 // update bounds
                 if (first) {
@@ -245,7 +239,6 @@ int main() {
         // setup floor
         initRenderer(m, floor, cam, &fb, nx, ny);
         delete[] m.tris;
-        delete[] m.norms;
         delete[] m.g.C;
         delete[] m.g.L;
     }
