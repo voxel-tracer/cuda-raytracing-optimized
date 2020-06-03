@@ -70,3 +70,15 @@ __device__ void model_tintedglass_scatter(scatter_info& out, const intersection&
     const vec3 absorption = -log(absorptionColor) / absorptionDistance;
     dielectric_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, absorption, rng);
 }
+
+__device__ void model_sss_scatter(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
+    float ior = 1.333f;
+    const vec3 glossy_tint(1, 1, 1); // colorless reflections
+    float glossy_fuzz = 0.0f;
+    //const vec3 absorptionColor(0.0972942f, 0.0482054f, 0.000273194f);
+    //float absorptionDistance = 1.0f;
+    //const vec3 absorption = -log(absorptionColor) / absorptionDistance;
+    const vec3 absorption(0.9f, 0.3f, 0.02f);
+    float scatteringDistance = 2.0f;
+    subsurface_dielectric_bsdf(out, i, wo, ior, glossy_tint, glossy_fuzz, absorption, scatteringDistance, rng);
+}

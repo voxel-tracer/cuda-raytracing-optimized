@@ -6,7 +6,7 @@
 #include "material.h"
 #include "scene_materials.h"
 
-#define STATS 
+#define STATS
 #define RUSSIAN_ROULETTE
 
 #define EPSILON 0.01f
@@ -40,18 +40,21 @@ __device__ __constant__ uint16_t d_gridL[kMaxL];
 
 #ifdef STATS
 #define NUM_RAYS_PRIMARY                0
-#define NUM_RAYS_PRIMARY_NOHITS         1
-#define NUM_RAYS_PRIMARY_BBOX_NOHITS    2
-#define NUM_RAYS_SECONDARY              3
-#define NUM_RAYS_SECONDARY_MESH         4
-#define NUM_RAYS_SECONDARY_NOHIT        5
-#define NUM_RAYS_SECONDARY_MESH_NOHIT   6
-#define NUM_RAYS_SECONDARY_BBOX_NOHIT   7
-#define NUM_RAYS_SHADOWS                8
-#define NUM_RAYS_SHADOWS_BBOX_NOHITS    9
-#define NUM_RAYS_SHADOWS_NOHITS         10
-#define NUM_RAYS_LOW_POWER              11
-#define NUM_RAYS_SIZE                   12
+#define NUM_RAYS_PRIMARY_HIT_MESH       1
+#define NUM_RAYS_PRIMARY_NOHITS         2
+#define NUM_RAYS_PRIMARY_BBOX_NOHITS    3
+#define NUM_RAYS_SECONDARY              4
+#define NUM_RAYS_SECONDARY_MESH         5
+#define NUM_RAYS_SECONDARY_NOHIT        6
+#define NUM_RAYS_SECONDARY_MESH_NOHIT   7
+#define NUM_RAYS_SECONDARY_BBOX_NOHIT   8
+#define NUM_RAYS_SHADOWS                9
+#define NUM_RAYS_SHADOWS_BBOX_NOHITS    10
+#define NUM_RAYS_SHADOWS_NOHITS         11
+#define NUM_RAYS_LOW_POWER              12
+#define NUM_RAYS_EXCEED_MAX_BOUNCE      13
+#define NUM_RAYS_RUSSIAN_KILL           14
+#define NUM_RAYS_SIZE                   15
 #endif
 
 struct RenderContext {
@@ -80,6 +83,7 @@ struct RenderContext {
     void printStats() const {
         std::cerr << "num rays:\n";
         std::cerr << " primary             : " << std::fixed << numRays[NUM_RAYS_PRIMARY] << std::endl;
+        std::cerr << " primary hit mesh    : " << std::fixed << numRays[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
         std::cerr << " primary nohit       : " << std::fixed << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
         std::cerr << " primary bb nohit    : " << std::fixed << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
         std::cerr << " secondary           : " << std::fixed << numRays[NUM_RAYS_SECONDARY] << std::endl;
@@ -90,7 +94,9 @@ struct RenderContext {
         std::cerr << " shadows             : " << std::fixed << numRays[NUM_RAYS_SHADOWS] << std::endl;
         std::cerr << " shadows nohit       : " << std::fixed << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
         std::cerr << " shadows bb nohit    : " << std::fixed << numRays[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
-        std::cerr << " power < 0.1         : " << std::fixed << numRays[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " power < 0.01        : " << std::fixed << numRays[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " exceeded max bounce : " << std::fixed << numRays[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
+        std::cerr << " russian roulette    : " << std::fixed << numRays[NUM_RAYS_RUSSIAN_KILL] << std::endl;
     }
 #else
     __device__ void rayStat(int type) const {}
@@ -215,7 +221,7 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef STATS
     bool fromMesh = false;
 #endif
-    for (p.bounce = 0; p.bounce < 50; p.bounce++) {
+    for (p.bounce = 0; p.bounce < 200; p.bounce++) {
 #ifdef STATS
         bool primary = p.bounce == 0;
         context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
@@ -236,12 +242,13 @@ __device__ void color(const RenderContext& context, path& p) {
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
             p.color += p.attenuation * c;
 
-            break;
+            return;
         }
 
 #ifdef STATS
         fromMesh = (inters.objId == TRIMESH);
         if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
+        if (primary && fromMesh) context.rayStat(NUM_RAYS_PRIMARY_HIT_MESH);
 #endif
         if (inters.objId == LIGHT) {
 #ifdef PATH_DBG
@@ -249,7 +256,7 @@ __device__ void color(const RenderContext& context, path& p) {
 #endif
             // ray hit the light, compute its contribution and add it to the path's color
             p.color += p.attenuation * context.lightColor;
-            break;
+            return;
         }
 #ifdef PATH_DBG
         if (p.dbg) printf("bounce %d: HIT %d at t %f with normal (%f, %f, %f)\n", p.bounce, inters.objId, inters.t, inters.normal.x(), inters.normal.y(), inters.normal.z());
@@ -257,13 +264,13 @@ __device__ void color(const RenderContext& context, path& p) {
 
         inters.inside = p.inside;
 
-        scatter_info scatter;
+        scatter_info scatter(inters);
         if (inters.objId == TRIMESH)
-            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            model_sss_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 
-        p.origin = inters.p;
+        p.origin += scatter.t * p.rayDir;
         p.rayDir = scatter.wi;
         p.attenuation *= scatter.throughput;
         p.specular = scatter.specular;
@@ -297,13 +304,15 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef PATH_DBG
                 if (p.dbg) printf("bounce %d: RUSSIAN ROULETTE BREAK\n", p.bounce);
 #endif
-                break;
+                context.rayStat(NUM_RAYS_RUSSIAN_KILL);
+                return;
             }
             p.attenuation *= 1 / m;
         }
 #endif
     }
     // exceeded recursion
+    context.rayStat(NUM_RAYS_EXCEED_MAX_BOUNCE);
 }
 
 __global__ void render(const RenderContext context) {

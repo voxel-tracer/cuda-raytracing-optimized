@@ -17,9 +17,12 @@ struct intersection {
 
 struct scatter_info {
     vec3 wi;
-    bool specular = false;
-    vec3 throughput = vec3(1, 1, 1);
-    bool refracted = false;
+    bool specular;
+    vec3 throughput;
+    bool refracted;
+    float t;
+
+    __device__ scatter_info(const intersection& i) : specular(false), throughput(vec3(1, 1, 1)), refracted(false), t(i.t) {}
 };
 
 struct path {

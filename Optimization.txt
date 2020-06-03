@@ -133,3 +133,37 @@ took 1,077.38 seconds.
    Global loads 7.8GB > 176MB
    Texture reads 18GB > 474MB
 
+ RUSSIAN ROULETTE
+ ----------------
+
+- coat1.1-coat no russian roulette
+num rays:
+ primary             : 3,932,160,000
+ primary nohit       : 2,990,817,008
+ primary bb nohit    : 1,742,724,357
+ secondary           : 5,651,821,550
+ secondary no hit    : 3,178,447,287
+ secondary bb nohit  : 2,598,627,306
+ secondary mesh      : 1,866,455,463
+ secondary mesh nohit: 753,260,811
+ shadows             : 3,928,213,015
+ shadows nohit       : 3,070,242,224
+ shadows bb nohit    : 2,072,341,307
+ power < 0.1         : 797,581,736
+took 372.208000 seconds.
+
+- coat1.1-coat russian roulette
+num rays:
+ primary             : 3,932,160,000
+ primary nohit       : 2,990,817,427
+ primary bb nohit    : 1,742,724,151
+ secondary           : 5,292,633,821
+ secondary no hit    : 3,069,256,623
+ secondary bb nohit  : 2,518,364,944
+ secondary mesh      : 1,699,366,430
+ secondary mesh nohit: 726,075,279
+ shadows             : 3,830,459,827
+ shadows nohit       : 3,023,120,886
+ shadows bb nohit    : 2,051,239,821
+ power < 0.1         : 459,932,193
+took 289.163000 seconds.

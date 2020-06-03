@@ -143,7 +143,7 @@ PHASE I.2 BASIC OPTIMIZATIONS
 
  PROGRESS
  --------
- 1045s (17m45s) > 757s (12m37s) > 531s (8m51s) > 395s (6m35s) > 350s (5m50s) > 290s (4m50s)
+ 1045s (17m45s) > 757s (12m37s) > 531s (8m51s) > 395s (6m35s) > 350s (5m50s) > 290s (4m50s) > 278s (4m38s)
 
  TASKS
  -----
@@ -200,26 +200,69 @@ PHASE I.2 BASIC OPTIMIZATIONS
  . using stats register usage goes down from 84 -> 79 !
  . perf is worse without stats!!!
 
-- investigate stat diff after material refactoring
+- DONE investigate stat diff after material refactoring
   one issue was caused by epsilon too small causing self intersections
   some faces have a wrong orientation causing the renderer to interpret their intersection as exiting from model
  . refactor logic to always reorient normal and use other ways to identify entry/exit from model
  . fixing this issue reduced register usage to 79 and 
 	PERF 290s > 278s (4m38s)
+- store triangle normal in constant memory
 
 ----------------------------------------------------------------------------------------------------------
 PHASE I.3 SUBSURFACE SCATTERING
 ----------------------------------------------------------------------------------------------------------
 
+- DONE implement subsurface scattering
+ . takes time to get used how to properly configure
+ . has a lot of variation even with 16K samples
+  . makes sense to implement some variation reducing techniques like splitting (less rays per pixel and more scattered rays)
+  . better phase functions should improve convergence
+
  NOTES
  -----
+- Disney BRDF initially didn't contain subsurface scattering, so we may get a lot of interesting renders without sss
 - after this phase is done it makes sense to cleanup the rendering code and simplify it to fit in a single cuda file
   then write a quick tutorial explaining all the optimizations that got it to run that fast
   . similar to https://fabiensanglard.net/revisiting_the_businesscard_raytracer/card_cudc.html
 
 ----------------------------------------------------------------------------------------------------------
-PHASE II
+PHASE II SUPPORT LARGE TRIANGLE MESH MODELS
 ----------------------------------------------------------------------------------------------------------
+ NOTES
+ -----
+- we should start with spheres project and update it to support triangle meshes
+- note that it also only supports diffuse brdf for now so we'll need to update that as well (eventually)
+- start by making minimum changes to support triangle meshes, we don't want to refactor the code as its a big
+  mess and eventually we want to move away from that project
+- current spheres project no longer uses constant or texture memory
+ . not sure why but I guess that's good as it will be less distraction when analysing its perf
+
+----------------------------------------------------------------------------------------------------------
+PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
+----------------------------------------------------------------------------------------------------------
+ TASKS
+ -----
+- DONE start by removing colors and updating code accordingly to only use modelColor
+ . bModelColor always set to true	
+- update loadScene() to load triangle meshes using tinyobj
+ . DONE introduce tri struct only needed during loading/bvh building
+	. has a center field
+ . DONE update scene to use tri* instead of sphere*
+ . change loadFromPLY() to loadFromOBJ() and use tinyobj
+ . update build_bvh() to accept tri* instead of sphere*
+  . it's mostly the same, we just need to update minof() and maxof() to handle tri instead of sphere
+  . we also need to update box_x/y/z_compare, if we use the tri centroids we can actually compute those centrois 
+    when loading the model as tri.center that way we don't need to change box_x/y/z_compare
+- after scene is loaded convert tri* to vec3* and pass them to renderContext
+ . RenderContext stores tri* and numTris instead of sphere*, it also no longer contains colors
+- change trace_scattered() and trace_shadows() to use hit_triangle() instead of hit_point()
+- change update() to just use modelColor (already exists) instead of colors
+- once I get the project to build and render, go through the code and make a list of fixes to make
+ . avoid refactoring, just add those to the optional list
+ . focus on rendering fixes that I learned from my new projects
+
+ OPTIONAL (don't do these now, leave them until we are ready to refactor the code into a new clean project)
+ -------- 
 
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES

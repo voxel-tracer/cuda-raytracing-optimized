@@ -91,4 +91,55 @@ __device__ void dielectric_bsdf(scatter_info& out, const intersection& i, const 
     out.specular = true;
 }
 
+__device__ void subsurface_bsdf(scatter_info& out, const intersection& i, const vec3& wo, const vec3& absorptionCoefficient, float scatteringDistance, rand_state& rng) {
+    bool scattered = false;
+    if (i.inside) {
+        float d = -logf(rnd(rng)) / scatteringDistance;
+        if (d < i.t) {
+            scattered = true;
+            out.t = d;
+        }
+        out.throughput = exp(-absorptionCoefficient * out.t);
+    }
+
+    if (scattered) {
+        out.wi = random_in_unit_sphere(rng);
+    } else {
+        out.wi = wo; // ray doesn't change direction
+        out.refracted = true;
+    }
+
+    out.specular = true;
+}
+
+__device__ void subsurface_dielectric_bsdf(scatter_info& out, const intersection& i, const vec3& wo, float layer_ior, const vec3 &glossy_tint, float glossy_fuzz, const vec3& absorptionCoefficient, float scatteringDistance, rand_state& rng) {
+    bool scattered = false;
+    if (i.inside) {
+        float d = -logf(rnd(rng)) / scatteringDistance;
+        if (d < i.t) {
+            scattered = true;
+            out.t = d;
+        }
+        out.throughput = exp(-absorptionCoefficient * out.t);
+    }
+
+    if (scattered) {
+        out.wi = random_in_unit_sphere(rng);
+    }
+    else {
+        if (fresnel_layer(i, wo, layer_ior, rng)) {
+            // ray will be reflected by the glossy bsdf
+            glossy_bsdf(out, i, wo, glossy_tint, glossy_fuzz, rng);
+        }
+        else {
+            // ray will be refracted
+            float etai_over_etat = i.inside ? layer_ior : (1.0f / layer_ior);
+            out.wi = unit_vector(refract(wo, i.normal, etai_over_etat));
+            out.refracted = true;
+        }
+    }
+
+    out.specular = true;
+}
+
 #endif

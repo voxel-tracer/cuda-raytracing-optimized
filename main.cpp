@@ -208,10 +208,10 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 40 : 4096) : 4;
+    int ns = !perf ? (fast ? (1024 * 16) : 4096) : 4;
     int tx = 8;
     int ty = 8;
 
