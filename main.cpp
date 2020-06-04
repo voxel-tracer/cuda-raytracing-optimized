@@ -12,6 +12,28 @@
 
 #include "kernels.h"
 
+struct mat3x3 {
+    vec3 rows[3];
+};
+
+const mat3x3 xUp = {
+    vec3(0,-1,0),
+    vec3(1,0,0),
+    vec3(0,0,1)
+};
+
+const mat3x3 yUp = {
+    vec3(1,0,0),
+    vec3(0,1,0),
+    vec3(0,0,1)
+};
+
+const mat3x3 zUp = {
+    vec3(1,0,0),
+    vec3(0,0,1),
+    vec3(0,-1,0)
+};
+
 float random_float(unsigned int& state) {
     state = (214013 * state + 2531011);
     return (float)((state >> 16) & 0x7FFF) / 32767;
@@ -19,19 +41,16 @@ float random_float(unsigned int& state) {
 
 #define RND (random_float(rand_state))
 
-camera setup_camera(int nx, int ny) {
-#ifdef CUBE
-    vec3 lookfrom(5, -7.5, 5);
-    vec3 lookat(0, 0, 0);
-#else
-    vec3 lookfrom(100, -150, 100);
-    vec3 lookat(0, 0, 10);
-#endif
+camera setup_camera(int nx, int ny, const mesh& m) {
+    float dist = 120;
+
+    vec3 lookfrom(dist, dist, dist);
+    vec3 lookat(0, m.bounds.max.y() / 2, 0);
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
     return camera(lookfrom,
         lookat,
-        vec3(0, 0, 1),
+        vec3(0, 1, 0),
         20.0,
         float(nx) / float(ny),
         aperture,
@@ -128,7 +147,7 @@ void buildGrid(mesh& m, float cellSize) {
     std::cerr << "num empty cells = " << numEmpty << std::endl;
 }
 
-bool setupScene(const char * filename, mesh& m, plane& floor) {
+bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -136,6 +155,8 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
     std::string warn;
     std::string err;
 
+    // note that tinyobj will automatically triangulate non-triangle polygons but it doesn't
+    // always do a good job orienting them properly
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename);
 
     if (!warn.empty())
@@ -162,7 +183,8 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
         m.numTris += shapes[s].mesh.num_face_vertices.size();
     }
 
-    bool first = true;
+    m.bounds.min = vec3(INFINITY, INFINITY, INFINITY);
+    m.bounds.max = vec3(-INFINITY, -INFINITY, -INFINITY);
 
     // loop over shapes and copy all triangles to array
     m.tris = new vec3[m.numTris * 3];
@@ -176,32 +198,66 @@ bool setupScene(const char * filename, mesh& m, plane& floor) {
                 std::cerr << "face " << f << " of shape " << s << " has " << fv << " vertices" << std::endl;
             
             // loop over vertices in the face
-            for (auto v = 0; v < 3; v++) {
+            for (auto i = 0; i < 3; i++) {
                 // access to vertex
-                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + i];
                 tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
 
-                vec3 tri(vx, vy, vz);
-                m.tris[triIdx * 3 + v] = tri;
+                vec3 o(vx, vy, vz);
+                // transform vectors as we load them
+                vec3 v;
+                v[0] = dot(mat.rows[0], o);
+                v[1] = dot(mat.rows[1], o);
+                v[2] = dot(mat.rows[2], o);
+                m.tris[triIdx * 3 + i] = v;
 
                 // update bounds
-                if (first) {
-                    first = false;
-                    m.bounds.min = tri;
-                    m.bounds.max = tri;
-                } else {
-                    m.bounds.min = min(m.bounds.min, tri);
-                    m.bounds.max = max(m.bounds.max, tri);
-                }
+                m.bounds.min = min(m.bounds.min, v);
+                m.bounds.max = max(m.bounds.max, v);
             }
             index_offset += 3;
         }
     }
 
+    // center scene around origin
+    const vec3 mn = m.bounds.min;
+    const vec3 mx = m.bounds.max;
+    vec3 ctr = (mx + mn) / 2; // this is the model center
+    ctr[1] = mn[1]; // make sure we can put the floor at y = 0
+
+    std::cerr << " original model bounds:" << std::endl;
+    std::cerr << "  min: " << mn << std::endl;
+    std::cerr << "  max: " << mx << std::endl;
+
+    // find max size across all axes
+    const float maxSize = max(mx - mn);
+    // we want to normalize the model so that its maxSize is scale and centered around ctr
+    // for each vertex v:
+    //  v = v- ctr // ctr is new origin
+    //  v = v / maxSize // scale model to fit in a bbox with maxSize 1
+    //  v = v * scale // scale model so that maxSize = scale
+    // => v = (v - ctr) * scale/maxSize
+    for (int i = 0; i < m.numTris * 3; i++) {
+        vec3 v = m.tris[i];
+        m.tris[i] = (v - ctr) * scale / maxSize;
+    }
+
+    // update model bounds
+    m.bounds.min = vec3(INFINITY, INFINITY, INFINITY);
+    m.bounds.max = vec3(-INFINITY, -INFINITY, -INFINITY);
+    for (int i = 0; i < m.numTris * 3; i++) {
+        m.bounds.min = min(m.bounds.min, m.tris[i]);
+        m.bounds.max = max(m.bounds.max, m.tris[i]);
+    }
+
+    std::cerr << " updated model bounds:" << std::endl;
+    std::cerr << "  min: " << m.bounds.min << std::endl;
+    std::cerr << "  max: " << m.bounds.max << std::endl;
+
     // setup floor
-    floor = plane(vec3(0, 0, -0.01), vec3(0, 0, 1));
+    floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
 
     return true;
 }
@@ -211,7 +267,7 @@ int main() {
     bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? (1024 * 16) : 4096) : 4;
+    int ns = !perf ? (fast ? 40 : 4096) : 4;
     int tx = 8;
     int ty = 8;
 
@@ -224,17 +280,16 @@ int main() {
     {
         plane floor;
         mesh m;
-#ifdef CUBE
-        if (!setupScene("D:\\models\\lowpoly\\cube.obj", m, floor)) return -1;
-#else
-        if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor)) return -1;
-#endif
+        if (!setupScene("D:\\models\\obj\\teapot.obj", m, floor, 100, yUp)) return -1;
+        //if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor, 100, zUp)) return -1;
+        //if (!setupScene("D:\\models\\obj\\bunny.obj", m, floor, 50, yUp)) return -1;
+        //if (!setupScene("D:\\models\\obj\\dragon.obj", m, floor, 50, yUp)) return -1;
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
         buildGrid(m, 10);
 
-        camera cam = setup_camera(nx, ny);
+        camera cam = setup_camera(nx, ny, m);
 
         // setup floor
         initRenderer(m, floor, cam, &fb, nx, ny);

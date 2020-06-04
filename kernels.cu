@@ -31,13 +31,6 @@ enum OBJ_ID {
     LIGHT
 };
 
-const int kMaxTris = 1000;
-const int kMaxC = 1100;
-const int kMaxL = 3600;
-__device__ __constant__ vec3 d_triangles[kMaxTris * 3];
-__device__ __constant__ uint16_t d_gridC[kMaxC];
-__device__ __constant__ uint16_t d_gridL[kMaxL];
-
 #ifdef STATS
 #define NUM_RAYS_PRIMARY                0
 #define NUM_RAYS_PRIMARY_HIT_MESH       1
@@ -59,6 +52,7 @@ __device__ __constant__ uint16_t d_gridL[kMaxL];
 
 struct RenderContext {
     vec3* fb;
+    vec3* tris;
     uint16_t numTris;
     bbox bounds;
     grid g;
@@ -123,7 +117,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
     for (uint16_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
         for (uint16_t cy = 0; cy < g.size.y(); cy++) {
             for (uint16_t cx = 0; cx < g.size.x(); cx++, ci++) {
-                if (d_gridC[ci] == d_gridC[ci + 1]) continue; // empty cell
+                if (g.C[ci] == g.C[ci + 1]) continue; // empty cell
                 // check if ray intersects cell bounds
                 bbox cbounds(
                     vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
@@ -132,14 +126,14 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
                 if (!hit_bbox(cbounds, r, closest)) continue; // ray doesn't intersect with cell's bounds
 
                 // loop through cell's triangles
-                for (uint16_t idx = d_gridC[ci]; idx < d_gridC[ci + 1]; idx++) {
+                for (uint16_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
                     float u, v;
-                    float hitT = triangleHit(d_triangles + d_gridL[idx] * 3, r, t_min, closest, u, v);
+                    float hitT = triangleHit(context.tris + g.L[idx] * 3, r, t_min, closest, u, v);
                     if (hitT < FLT_MAX) {
                         if (isShadow) return 0.0f;
 
                         closest = hitT;
-                        rec.triId = d_gridL[idx];
+                        rec.triId = g.L[idx];
                         rec.u = u;
                         rec.v = v;
                     }
@@ -160,9 +154,9 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
-        vec3 v0 = d_triangles[triHit.triId * 3];
-        vec3 v1 = d_triangles[triHit.triId * 3 + 1];
-        vec3 v2 = d_triangles[triHit.triId * 3 + 2];
+        vec3 v0 = context.tris[triHit.triId * 3];
+        vec3 v1 = context.tris[triHit.triId * 3 + 1];
+        vec3 v2 = context.tris[triHit.triId * 3 + 2];
 
         inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
     } else {
@@ -238,7 +232,7 @@ __device__ void color(const RenderContext& context, path& p) {
             else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
 #endif
             // sky color
-            float t = 0.5f * (p.rayDir.z() + 1.0f);
+            float t = 0.5f * (p.rayDir.y() + 1.0f);
             vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
             p.color += p.attenuation * c;
 
@@ -266,9 +260,9 @@ __device__ void color(const RenderContext& context, path& p) {
 
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH)
-            model_sss_scatter(scatter, inters, p.rayDir, p.rng);
+            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
 
         p.origin += scatter.t * p.rayDir;
         p.rayDir = scatter.wi;
@@ -304,7 +298,9 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef PATH_DBG
                 if (p.dbg) printf("bounce %d: RUSSIAN ROULETTE BREAK\n", p.bounce);
 #endif
+#ifdef STATS
                 context.rayStat(NUM_RAYS_RUSSIAN_KILL);
+#endif
                 return;
             }
             p.attenuation *= 1 / m;
@@ -312,7 +308,9 @@ __device__ void color(const RenderContext& context, path& p) {
 #endif
     }
     // exceeded recursion
+#ifdef STATS
     context.rayStat(NUM_RAYS_EXCEED_MAX_BOUNCE);
+#endif
 }
 
 __global__ void render(const RenderContext context) {
@@ -358,14 +356,17 @@ initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
-    checkCudaErrors(cudaMemcpyToSymbol(d_triangles, m.tris, m.numTris * 3 * sizeof(vec3)));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, m.numTris * 3 * sizeof(vec3)));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, m.tris, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
     renderContext.numTris = m.numTris;
     renderContext.bounds = m.bounds;
 
     // copy grid to gpu
     renderContext.g = m.g;
-    checkCudaErrors(cudaMemcpyToSymbol(d_gridC, m.g.C, m.g.sizeC() * sizeof(uint16_t)));
-    checkCudaErrors(cudaMemcpyToSymbol(d_gridL, m.g.L, m.g.sizeL() * sizeof(uint16_t)));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint16_t)));
+    checkCudaErrors(cudaMemcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint16_t), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint16_t)));
+    checkCudaErrors(cudaMemcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint16_t), cudaMemcpyHostToDevice));
     renderContext.cam = cam;
 
     renderContext.initStats();
