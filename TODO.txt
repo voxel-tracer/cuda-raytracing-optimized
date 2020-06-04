@@ -258,6 +258,12 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 - DONE change trace_scattered() and trace_shadows() to use hit_triangle() instead of hit_point()
 - DONE change update() to just use modelColor (already exists) instead of colors
 
+- I still feel triangle normals are wrong. Try to figure out a way to orient them properly
+
+- investigate why I can't render dragon.obj
+ . DONE change code to use global memory and load arbitrary sized meshes
+ . change code to support large number of vertices
+ . render dragon model
 
 - once I get the project to build and render, go through the code and make a list of fixes to make
  . avoid refactoring, just add those to the optional list
@@ -266,6 +272,8 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
  NOTES
  -----
 - I can load teapot and bunny but I'm having trouble with stanford dragon model
+- subsurface scattering is too slow. Eventually I will implement better phase functions so don't worry about it for now
+ . it is also possible that I misconfigured the material and its causing it to scatter too much
 
  OPTIONAL (don't do these now, leave them until we are ready to refactor the code into a new clean project)
  -------- 
