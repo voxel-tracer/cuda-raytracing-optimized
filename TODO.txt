@@ -248,22 +248,31 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
  . DONE introduce tri struct only needed during loading/bvh building
 	. has a center field
  . DONE update scene to use tri* instead of sphere*
- . change loadFromPLY() to loadFromOBJ() and use tinyobj
- . update build_bvh() to accept tri* instead of sphere*
+ . DONE update build_bvh() to accept tri* instead of sphere*
   . it's mostly the same, we just need to update minof() and maxof() to handle tri instead of sphere
   . we also need to update box_x/y/z_compare, if we use the tri centroids we can actually compute those centrois 
     when loading the model as tri.center that way we don't need to change box_x/y/z_compare
-- after scene is loaded convert tri* to vec3* and pass them to renderContext
+ . change loadFromPLY() to loadFromOBJ() and use tinyobj
+- DONE after scene is loaded convert tri* to vec3* and pass them to renderContext
  . RenderContext stores tri* and numTris instead of sphere*, it also no longer contains colors
-- change trace_scattered() and trace_shadows() to use hit_triangle() instead of hit_point()
-- change update() to just use modelColor (already exists) instead of colors
+- DONE change trace_scattered() and trace_shadows() to use hit_triangle() instead of hit_point()
+- DONE change update() to just use modelColor (already exists) instead of colors
+
+
 - once I get the project to build and render, go through the code and make a list of fixes to make
  . avoid refactoring, just add those to the optional list
  . focus on rendering fixes that I learned from my new projects
 
+ NOTES
+ -----
+- I can load teapot and bunny but I'm having trouble with stanford dragon model
+
  OPTIONAL (don't do these now, leave them until we are ready to refactor the code into a new clean project)
  -------- 
-
+- make it easy to set UP vector for the camera (and floor ?)
+- add option to show floor with a configurable size.
+ . I could make it a box so it's prettier
+- add versions to .bin files
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
 ----------------------------------------------------------------------------------------------------------
