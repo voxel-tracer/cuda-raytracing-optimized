@@ -42,9 +42,9 @@ float random_float(unsigned int& state) {
 #define RND (random_float(rand_state))
 
 camera setup_camera(int nx, int ny, const mesh& m) {
-    float dist = 120;
+    float dist = m.cameraDist;
 
-    vec3 lookfrom(dist, dist, dist);
+    vec3 lookfrom(-dist, dist, -dist);
     vec3 lookat(0, m.bounds.max.y() / 2, 0);
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
@@ -70,13 +70,13 @@ uint32_t LinearToSRGB(float x)
 
 void buildGrid(mesh& m, float cellSize) {
     // compute grid size in cells
-    vec3 gridSize = ceil((m.bounds.max - m.bounds.min) / cellSize);
+    vec3 gridSize = ceil((m.bounds.max - m.bounds.min + vec3(1, 1, 1)) / cellSize);
     std::cerr << "grid size = " << gridSize << std::endl;
 
-    const uint16_t N = gridSize.x() * gridSize.y() * gridSize.z();
-    std::vector<std::vector<uint16_t>> cells;
+    const uint32_t N = gridSize.x() * gridSize.y() * gridSize.z();
+    std::vector<std::vector<uint32_t>> cells;
     for (auto i = 0; i < N; i++) {
-        std::vector<uint16_t> v;
+        std::vector<uint32_t> v;
         cells.push_back(v);
     }
 
@@ -96,7 +96,7 @@ void buildGrid(mesh& m, float cellSize) {
             for (int y = gmin.y(); y <= gmax.y(); y++) {
                 for (int z = gmin.z(); z <= gmax.z(); z++) {
                     // compute cell coordinate
-                    uint16_t cellIdx = z * gridSize.x() * gridSize.y() + y * gridSize.x() + x;
+                    uint32_t cellIdx = z * gridSize.x() * gridSize.y() + y * gridSize.x() + x;
                     cells[cellIdx].push_back(i);
                 }
             }
@@ -109,7 +109,7 @@ void buildGrid(mesh& m, float cellSize) {
 
     // let's start with C, N being the total number of cells in the grid, C has a size of N+1
     // C[i] will contain the start index of cell i, so triangles of cell i are between C[i] and C[i+1] exclusive
-    uint16_t* C = new uint16_t[N + 1];
+    uint32_t* C = new uint32_t[N + 1];
     // count num tris in each cell
     for (auto i = 0; i < N; i++)
         C[i] = cells[i].size();
@@ -122,10 +122,10 @@ void buildGrid(mesh& m, float cellSize) {
     C[0] = 0;
 
     // now let's build L
-    uint16_t* L = new uint16_t[C[N]];
-    uint16_t idx = 0;
-    for (uint16_t i = 0; i < N; i++) {
-        for (uint16_t j = 0; j < cells[i].size(); j++) {
+    uint32_t* L = new uint32_t[C[N]];
+    uint32_t idx = 0;
+    for (uint32_t i = 0; i < N; i++) {
+        for (uint32_t j = 0; j < cells[i].size(); j++) {
             L[idx++] = cells[i][j];
         }
     }
@@ -137,7 +137,7 @@ void buildGrid(mesh& m, float cellSize) {
     m.g.L = L;
 
     // display some stats
-    uint16_t numEmpty = 0;
+    uint32_t numEmpty = 0;
     for (auto i = 0; i < N; i++) {
         if (C[i + 1] == C[i]) numEmpty++;
     }
@@ -147,13 +147,16 @@ void buildGrid(mesh& m, float cellSize) {
     std::cerr << "num empty cells = " << numEmpty << std::endl;
 }
 
-bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat) {
+bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat, float cameraDist) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     
     std::string warn;
     std::string err;
+
+
+    m.cameraDist = cameraDist;
 
     // note that tinyobj will automatically triangulate non-triangle polygons but it doesn't
     // always do a good job orienting them properly
@@ -188,7 +191,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const
 
     // loop over shapes and copy all triangles to array
     m.tris = new vec3[m.numTris * 3];
-    uint16_t triIdx = 0;
+    uint32_t triIdx = 0;
     for (auto s = 0; s < shapes.size(); s++) {
         // loop over faces
         size_t index_offset = 0;
@@ -280,10 +283,11 @@ int main() {
     {
         plane floor;
         mesh m;
-        if (!setupScene("D:\\models\\obj\\teapot.obj", m, floor, 100, yUp)) return -1;
-        //if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor, 100, zUp)) return -1;
-        //if (!setupScene("D:\\models\\obj\\bunny.obj", m, floor, 50, yUp)) return -1;
-        //if (!setupScene("D:\\models\\obj\\dragon.obj", m, floor, 50, yUp)) return -1;
+        //if (!setupScene("D:\\models\\obj\\teapot.obj", m, floor, 100, yUp, 120)) return -1;
+        //if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor, 100, zUp, 120)) return -1;
+        //if (!setupScene("D:\\models\\obj\\bunny.obj", m, floor, 50, yUp, 120)) return -1;
+        if (!setupScene("D:\\models\\obj\\dragon.obj", m, floor, 100, yUp, 200)) return -1;
+        //if (!setupScene("D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ", m, floor, 100, yUp, 200)) return -1;
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 

@@ -53,7 +53,7 @@ enum OBJ_ID {
 struct RenderContext {
     vec3* fb;
     vec3* tris;
-    uint16_t numTris;
+    uint32_t numTris;
     bbox bounds;
     grid g;
     int nx;
@@ -114,9 +114,9 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
 
     // loop through grid cells
     const grid& g = context.g;
-    for (uint16_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
-        for (uint16_t cy = 0; cy < g.size.y(); cy++) {
-            for (uint16_t cx = 0; cx < g.size.x(); cx++, ci++) {
+    for (uint32_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
+        for (uint32_t cy = 0; cy < g.size.y(); cy++) {
+            for (uint32_t cx = 0; cx < g.size.x(); cx++, ci++) {
                 if (g.C[ci] == g.C[ci + 1]) continue; // empty cell
                 // check if ray intersects cell bounds
                 bbox cbounds(
@@ -126,7 +126,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
                 if (!hit_bbox(cbounds, r, closest)) continue; // ray doesn't intersect with cell's bounds
 
                 // loop through cell's triangles
-                for (uint16_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
+                for (uint32_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
                     float u, v;
                     float hitT = triangleHit(context.tris + g.L[idx] * 3, r, t_min, closest, u, v);
                     if (hitT < FLT_MAX) {
@@ -363,10 +363,10 @@ initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int
 
     // copy grid to gpu
     renderContext.g = m.g;
-    checkCudaErrors(cudaMalloc((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint16_t)));
-    checkCudaErrors(cudaMemcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint16_t), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMalloc((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint16_t)));
-    checkCudaErrors(cudaMemcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint16_t), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint32_t)));
+    checkCudaErrors(cudaMemcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint32_t), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint32_t)));
+    checkCudaErrors(cudaMemcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint32_t), cudaMemcpyHostToDevice));
     renderContext.cam = cam;
 
     renderContext.initStats();

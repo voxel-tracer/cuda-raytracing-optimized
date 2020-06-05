@@ -55,23 +55,25 @@ struct bbox {
 struct grid {
     vec3 size;
     float cellSize;
-    uint16_t* C; // C[i] start index of this cell's triangles in L
-    uint16_t* L; // triangles indices for all cells
+    uint32_t* C; // C[i] start index of this cell's triangles in L
+    uint32_t* L; // triangles indices for all cells
 
-    __host__ __device__ uint16_t sizeC() const {
+    __host__ __device__ uint32_t sizeC() const {
         return size.x() * size.y() * size.z() + 1;
     }
-    __host__ __device__ uint16_t sizeL() const {
+    __host__ __device__ uint32_t sizeL() const {
         return C[sizeC() - 1];
     }
 };
 
 struct mesh {
     vec3* tris;
-    uint16_t numTris;
+    uint32_t numTris;
     bbox bounds;
 
     grid g;
+
+    float cameraDist = 100;
 };
 
 struct plane {
