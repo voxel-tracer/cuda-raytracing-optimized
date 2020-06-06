@@ -12,10 +12,6 @@
 
 #include "kernels.h"
 
-struct mat3x3 {
-    vec3 rows[3];
-};
-
 const mat3x3 xUp = {
     vec3(0,-1,0),
     vec3(1,0,0),
@@ -41,10 +37,7 @@ float random_float(unsigned int& state) {
 
 #define RND (random_float(rand_state))
 
-camera setup_camera(int nx, int ny, const mesh& m) {
-    float dist = m.cameraDist;
-
-    vec3 lookfrom(-dist, dist, -dist);
+camera setup_camera(int nx, int ny, const mesh& m, vec3 lookfrom) {
     vec3 lookat(0, m.bounds.max.y() / 2, 0);
     float dist_to_focus = (lookfrom - lookat).length();
     float aperture = 0.1;
@@ -147,16 +140,13 @@ void buildGrid(mesh& m, float cellSize) {
     std::cerr << "num empty cells = " << numEmpty << std::endl;
 }
 
-bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat, float cameraDist) {
+bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     
     std::string warn;
     std::string err;
-
-
-    m.cameraDist = cameraDist;
 
     // note that tinyobj will automatically triangulate non-triangle polygons but it doesn't
     // always do a good job orienting them properly
@@ -270,7 +260,7 @@ int main() {
     bool fast = true;
     int nx = (!perf && !fast) ? 1200 : 600;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 40 : 4096) : 4;
+    int ns = !perf ? (fast ? 1 : 4096) : 4;
     int tx = 8;
     int ty = 8;
 
@@ -278,22 +268,26 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
+    scene teapot = { "D:\\models\\obj\\teapot.obj" , yUp, 100, 10, vec3(1,1,1) * 120 };
+    scene panter = { "D:\\models\\lowpoly\\panter.obj" , zUp, 100, 10, vec3(1,1,1) * 120 };
+    scene bunny = { "D:\\models\\obj\\bunny.obj", yUp, 50, 10, vec3(1,1,1) * 120 };
+    scene dragon = { "D:\\models\\obj\\dragon.obj" , yUp, 100, 10, vec3(-1,1,-1) * 200 };
+    scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ" , yUp, 100, 10, vec3(1,1,1) * 200 };
+
+    scene sc = panter;
     // init
     vec3 *fb;
     {
         plane floor;
         mesh m;
-        //if (!setupScene("D:\\models\\obj\\teapot.obj", m, floor, 100, yUp, 120)) return -1;
-        //if (!setupScene("D:\\models\\lowpoly\\panter.obj", m, floor, 100, zUp, 120)) return -1;
-        //if (!setupScene("D:\\models\\obj\\bunny.obj", m, floor, 50, yUp, 120)) return -1;
-        if (!setupScene("D:\\models\\obj\\dragon.obj", m, floor, 100, yUp, 200)) return -1;
-        //if (!setupScene("D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ", m, floor, 100, yUp, 200)) return -1;
+
+        if (!setupScene(sc.filename, m, floor, sc.scale, sc.mat)) return -1;
         std::cerr << " there are " << m.numTris << " triangles" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 
-        buildGrid(m, 10);
+        buildGrid(m, sc.cellSize);
 
-        camera cam = setup_camera(nx, ny, m);
+        camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
         initRenderer(m, floor, cam, &fb, nx, ny);

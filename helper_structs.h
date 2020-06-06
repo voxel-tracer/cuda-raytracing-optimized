@@ -7,6 +7,10 @@
 
 typedef unsigned int rand_state;
 
+struct mat3x3 {
+    vec3 rows[3];
+};
+
 struct intersection {
     unsigned int objId; // object that was intersected
     float t;
@@ -72,8 +76,14 @@ struct mesh {
     bbox bounds;
 
     grid g;
+};
 
-    float cameraDist = 100;
+struct scene {
+    char* filename;
+    mat3x3 mat;
+    float scale;
+    float cellSize;
+    vec3 camPos;
 };
 
 struct plane {

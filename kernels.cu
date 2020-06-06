@@ -260,9 +260,9 @@ __device__ void color(const RenderContext& context, path& p) {
 
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH)
-            model_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
         else 
-            floor_coat_scatter(scatter, inters, p.rayDir, p.rng);
+            floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 
         p.origin += scatter.t * p.rayDir;
         p.rayDir = scatter.wi;
