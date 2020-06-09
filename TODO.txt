@@ -57,7 +57,7 @@ FEATURES
 
  IMPROVEMENTS IN NO PARTICULAR ORDER
  -----------------------------------
-- use MeshLab to simplify complex models so they can fit in constant memory
+- DONE use MeshLab to simplify complex models so they can fit in constant memory
 - when importing a model, define its orientation (up vector) and make sure its loading
   in the correct orientation. Makes it easier to use a standard camera position and orient
   the environment map
@@ -70,7 +70,7 @@ FEATURES
 - resume rendering from saved file (useful when we want to add more samples to an already expensive render)
 - can we preprocess the triangles to identify the ones that don't face any other triangle from the model ?
  . we could use this to quickly identify no_hits for secondary rays
-- Gimp "White Balance" improves the quality of the final renderer
+- NOPE Gimp "White Balance" improves the quality of the final renderer
  . can I implement the same strategy in my renderer ?
 - all rendering params are configurables from a simple test file. Create a separate file per test scene
 - once I implement wavefront renderer, use CUDA graphs to optimize lunching the kernels
@@ -85,6 +85,12 @@ FEATURES
 
  POTENTIAL DIRECTION
  -------------------
+* simple OpenGL model viewer
+ . easily set camera position
+ . easily rotate/translate the model
+ . easily orient light
+ . easily configure render settings: materials, light, ...
+ . ideally starts CUDA renderer and displays progressive rendering
 * use MDL as a guide to write my own easy to combine material blocks
   e.g. coat, dielectric and tinted glass share the same fresnel reflection/refraction logic
    find ways to make it easy to combine blocks of code to build those materials
@@ -128,7 +134,7 @@ PHASE I.1: POLYGON RENDERER
  ----
 - tinted-glass on coat 1200x800x4096 in 1045s (17m45s)
 ----------------------------------------------------------------------------------------------------------
-PHASE I.2 BASIC OPTIMIZATIONS
+PHASE I.2 BASIC OPTIMIZATIONS (got 3.5x speedup)
 ----------------------------------------------------------------------------------------------------------
 - use the ray stats I collected and identify strategies to reduce total number of traced rays
 - apply optimization strategies from my previous work without introducing a full BVH
@@ -266,7 +272,7 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 
 - once I get the project to build and render, go through the code and make a list of fixes to make
  . avoid refactoring, just add those to the optional list
- . focus on rendering fixes that I learned from my new projects
+ . focus on rendering fixes that I learned from my grid-based renderer
 
  NOTES
  -----
@@ -281,6 +287,9 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 - for large models, preview window lags too much
  . uncouple rendering of the window from rendering of the model
  . add "preview" mode that renders a coarse version of the model (maybe stop at some level of bvh)
+- grid-based renderer could benefit from resume feature. This way we can render incrementally especially
+  for complex material (like subsurface scattering)
+- add scene struct to grid-based renderer
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
 ----------------------------------------------------------------------------------------------------------
