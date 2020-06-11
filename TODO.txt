@@ -236,8 +236,11 @@ PHASE II SUPPORT LARGE TRIANGLE MESH MODELS
 ----------------------------------------------------------------------------------------------------------
  NOTES
  -----
-- we should start with spheres project and update it to support triangle meshes
-- note that it also only supports diffuse brdf for now so we'll need to update that as well (eventually)
+- DONE we should start with spheres project and update it to support triangle meshes
+- update bvh-renderer to be at par with grid-renderer:
+ . colored background
+ . support for multiple materials
+ . floor/box with dedicated material
 - start by making minimum changes to support triangle meshes, we don't want to refactor the code as its a big
   mess and eventually we want to move away from that project
 - current spheres project no longer uses constant or texture memory
@@ -270,14 +273,29 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
  . using uint16_t doesn't work for large models
 - DONE make it easy to set UP vector for the camera (and floor ?)
 
-- once I get the project to build and render, go through the code and make a list of fixes to make
- . avoid refactoring, just add those to the optional list
- . focus on rendering fixes that I learned from my grid-based renderer
+- DONE looks like bvh traversal has a bug in it, as it tries to read non existing triangles
+ . shadow rays were generated with a NaN direction
+
+- get a sense of how fast bvh renderer compared to the grid renderer
+ . easiest is to change the grid renderer so that it matches the render settings of the bvh renderer
+  . no floor
+  . specific camera/light settings
+
+- implement basic bvh building and traversal in mega-kernel renderer (previously grid renderer)
+  don't worry about SAH for now
+  don't worry about splitting the kernels for now
+
+- rewrite mega-kernel to render a single sample per pixel
+  can this reduces register usage ?
 
  NOTES
  -----
 - subsurface scattering is too slow. Eventually I will implement better phase functions so don't worry about it for now
  . it is also possible that I misconfigured the material and its causing it to scatter too much
+- took me time to track the memory access issue. What I learned from it:
+ . I should have a DBG mode that checks each array idx before we access and print enough hints to point to it
+   when we see issues, we can enable DBG mode
+ . in DBG mode track NaN in various places of the code and print a warning
 
  OPTIONAL (don't do these now, leave them until we are ready to refactor the code into a new clean project)
  -------- 
@@ -290,6 +308,8 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 - grid-based renderer could benefit from resume feature. This way we can render incrementally especially
   for complex material (like subsurface scattering)
 - add scene struct to grid-based renderer
+- material that draws the borders of triangles on top of the material
+
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
 ----------------------------------------------------------------------------------------------------------
