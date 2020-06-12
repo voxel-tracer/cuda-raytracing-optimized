@@ -276,11 +276,28 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 - DONE looks like bvh traversal has a bug in it, as it tries to read non existing triangles
  . shadow rays were generated with a NaN direction
 
-- get a sense of how fast bvh renderer compared to the grid renderer
+- DONE get a sense of how fast bvh renderer compared to the grid renderer
  . easiest is to change the grid renderer so that it matches the render settings of the bvh renderer
-  . no floor
-  . specific camera/light settings
-
+  . DONE only compare models that are yUp: teapot, bunny, dragon, catfolkrogue
+	teapot scale = 100, camera.dist = 120
+	bunny scale = 50, camera.dist = 120
+	dragon scale = 100, camera.dist = 200
+	
+  . DONE camera looks at scene.bounds.max.y/2
+  . DONE center model on top of floor
+  . DONE camera.fov = 20
+  . DONE no floor
+  . DONE constant sky color
+  . DONE show sky color
+  . DONE same model color
+  . DONE same light settings
+  . DONE max bounces = 10
+  . DONE disable russian roulette
+  . sqrt color before converting to linear sRGB
+ . some performance numbers for 512x512 1024spp
+	teapot	 39s vs  120s (x3)
+	bunny	131s vs  937s (x7)
+	dragon  294s vs 1793s (x12)	(1024spp crashed the laptop for the grid renderer, this number is for 512spp)
 - implement basic bvh building and traversal in mega-kernel renderer (previously grid renderer)
   don't worry about SAH for now
   don't worry about splitting the kernels for now
@@ -296,6 +313,8 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
  . I should have a DBG mode that checks each array idx before we access and print enough hints to point to it
    when we see issues, we can enable DBG mode
  . in DBG mode track NaN in various places of the code and print a warning
+- the way I convert colors in grid renderer to sRGB may be wrong
+  I should probably not sqrt() the color channel before conversion
 
  OPTIONAL (don't do these now, leave them until we are ready to refactor the code into a new clean project)
  -------- 
