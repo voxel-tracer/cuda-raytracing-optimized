@@ -56,33 +56,57 @@ struct bbox {
     __host__ __device__ bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
 };
 
-struct grid {
-    vec3 size;
-    float cellSize;
-    uint32_t* C; // C[i] start index of this cell's triangles in L
-    uint32_t* L; // triangles indices for all cells
+struct triangle {
+    triangle() {}
+    triangle(vec3 v0, vec3 v1, vec3 v2) {
+        v[0] = v0;
+        v[1] = v1;
+        v[2] = v2;
+        update();
+    }
 
-    __host__ __device__ uint32_t sizeC() const {
-        return size.x() * size.y() * size.z() + 1;
+    void update() {
+        center = (v[0] + v[1] + v[2]) / 3;
     }
-    __host__ __device__ uint32_t sizeL() const {
-        return C[sizeC() - 1];
-    }
+
+    vec3 v[3];
+    vec3 center;
+};
+
+struct bvh_node {
+    __host__ __device__ bvh_node() {}
+    bvh_node(const vec3& A, const vec3& B) :a(A), b(B) {}
+    __device__ bvh_node(float x0, float y0, float z0, float x1, float y1, float z1) : a(x0, y0, z0), b(x1, y1, z1) {}
+
+    __device__ vec3 min() const { return a; }
+    __device__ vec3 max() const { return b; }
+
+    __host__ __device__ unsigned int split_axis() const { return max_component(b - a); }
+
+    vec3 a;
+    vec3 b;
 };
 
 struct mesh {
-    vec3* tris;
+    triangle* tris;
     uint32_t numTris;
+
+    bvh_node* bvh;
+    int numBvhNodes;
+
     bbox bounds;
 
-    grid g;
+    ~mesh() {
+        delete[] tris;
+        delete[] bvh;
+    }
 };
+
 
 struct scene {
     char* filename;
     mat3x3 mat;
     float scale;
-    float cellSize;
     vec3 camPos;
 };
 

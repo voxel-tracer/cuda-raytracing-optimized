@@ -61,86 +61,22 @@ uint32_t LinearToSRGB(float x)
     return u;
 }
 
-void buildGrid(mesh& m, float cellSize) {
-    // compute grid size in cells
-    vec3 gridSize = ceil((m.bounds.max - m.bounds.min + vec3(1, 1, 1)) / cellSize);
-    std::cerr << "grid size = " << gridSize << std::endl;
 
-    const uint32_t N = gridSize.x() * gridSize.y() * gridSize.z();
-    std::vector<std::vector<uint32_t>> cells;
-    for (auto i = 0; i < N; i++) {
-        std::vector<uint32_t> v;
-        cells.push_back(v);
-    }
+void load_from_binary(const char* input, mesh& m) {
+    std::fstream in(input, std::ios::in | std::ios::binary);
+    in.read((char*)&m.numTris, sizeof(int));
+    m.tris = new triangle[m.numTris];
+    in.read((char*)m.tris, sizeof(triangle) * m.numTris);
 
-    // loop over all triangles and add them to the corresponding cells
-    for (auto i = 0; i < m.numTris; i++) {
-        // compute triangle bbox
-        vec3 p1 = m.tris[i * 3];
-        vec3 p2 = m.tris[i * 3 + 1];
-        vec3 p3 = m.tris[i * 3 + 2];
-        vec3 bmin = min(p1, min(p2, p3));
-        vec3 bmax = max(p1, max(p2, p3));
+    in.read((char*)&m.numBvhNodes, sizeof(int));
+    m.bvh = new bvh_node[m.numBvhNodes];
+    in.read((char*)m.bvh, sizeof(bvh_node) * m.numBvhNodes);
 
-        vec3 gmin = floor((bmin - m.bounds.min) / cellSize);
-        vec3 gmax = floor((bmax - m.bounds.min) / cellSize);
-
-        for (int x = gmin.x(); x <= gmax.x(); x++) {
-            for (int y = gmin.y(); y <= gmax.y(); y++) {
-                for (int z = gmin.z(); z <= gmax.z(); z++) {
-                    // compute cell coordinate
-                    uint32_t cellIdx = z * gridSize.x() * gridSize.y() + y * gridSize.x() + x;
-                    cells[cellIdx].push_back(i);
-                }
-            }
-        }    
-    }
-
-    // now that we constructed cells, we need to convert it to two arrays:
-    // L[] contains all triangles indices for all cells in a linear order
-    // C[] start index in L[] for each cell
-
-    // let's start with C, N being the total number of cells in the grid, C has a size of N+1
-    // C[i] will contain the start index of cell i, so triangles of cell i are between C[i] and C[i+1] exclusive
-    uint32_t* C = new uint32_t[N + 1];
-    // count num tris in each cell
-    for (auto i = 0; i < N; i++)
-        C[i] = cells[i].size();
-    // compute end index of each cell
-    for (auto i = 0; i < N; i++)
-        C[i + 1] += C[i];
-    // compute start index by shifting cells to the right
-    for (auto i = N; i > 0; i--)
-        C[i] = C[i - 1];
-    C[0] = 0;
-
-    // now let's build L
-    uint32_t* L = new uint32_t[C[N]];
-    uint32_t idx = 0;
-    for (uint32_t i = 0; i < N; i++) {
-        for (uint32_t j = 0; j < cells[i].size(); j++) {
-            L[idx++] = cells[i][j];
-        }
-    }
-    std::cerr << "check: " << idx << " == " << C[N] << std::endl;
-
-    m.g.size = gridSize;
-    m.g.cellSize = cellSize;
-    m.g.C = C;
-    m.g.L = L;
-
-    // display some stats
-    uint32_t numEmpty = 0;
-    for (auto i = 0; i < N; i++) {
-        if (C[i + 1] == C[i]) numEmpty++;
-    }
-
-    std::cerr << "grid C size = " << m.g.sizeC() << std::endl;
-    std::cerr << "grid L size = " << m.g.sizeL() << std::endl;
-    std::cerr << "num empty cells = " << numEmpty << std::endl;
+    in.read((char*)&m.bounds.min, sizeof(vec3));
+    in.read((char*)&m.bounds.max, sizeof(vec3));
 }
 
-bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const mat3x3& mat) {
+bool deprecated_setupScene(const char * filename, mesh& m, float scale, const mat3x3& mat) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -180,7 +116,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const
     m.bounds.max = vec3(-INFINITY, -INFINITY, -INFINITY);
 
     // loop over shapes and copy all triangles to array
-    m.tris = new vec3[m.numTris * 3];
+    m.tris = new triangle[m.numTris];
     uint32_t triIdx = 0;
     for (auto s = 0; s < shapes.size(); s++) {
         // loop over faces
@@ -204,7 +140,7 @@ bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const
                 v[0] = dot(mat.rows[0], o);
                 v[1] = dot(mat.rows[1], o);
                 v[2] = dot(mat.rows[2], o);
-                m.tris[triIdx * 3 + i] = v;
+                m.tris[triIdx].v[i] = v;
 
                 // update bounds
                 m.bounds.min = min(m.bounds.min, v);
@@ -232,17 +168,20 @@ bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const
     //  v = v / maxSize // scale model to fit in a bbox with maxSize 1
     //  v = v * scale // scale model so that maxSize = scale
     // => v = (v - ctr) * scale/maxSize
-    for (int i = 0; i < m.numTris * 3; i++) {
-        vec3 v = m.tris[i];
-        m.tris[i] = (v - ctr) * scale / maxSize;
+    for (int i = 0; i < m.numTris; i++) {
+        for (int j = 0; j < 3; j++)
+            m.tris[i].v[j] = (m.tris[i].v[j] - ctr) * scale / maxSize;
+        m.tris[i].update();
     }
 
     // update model bounds
     m.bounds.min = vec3(INFINITY, INFINITY, INFINITY);
     m.bounds.max = vec3(-INFINITY, -INFINITY, -INFINITY);
-    for (int i = 0; i < m.numTris * 3; i++) {
-        m.bounds.min = min(m.bounds.min, m.tris[i]);
-        m.bounds.max = max(m.bounds.max, m.tris[i]);
+    for (int i = 0; i < m.numTris; i++) {
+        for (int j = 0; j < 3; j++) {
+            m.bounds.min = min(m.bounds.min, m.tris[i].v[j]);
+            m.bounds.max = max(m.bounds.max, m.tris[i].v[j]);
+        }
     }
 
     std::cerr << " updated model bounds:" << std::endl;
@@ -250,7 +189,6 @@ bool setupScene(const char * filename, mesh& m, plane& floor, float scale, const
     std::cerr << "  max: " << m.bounds.max << std::endl;
 
     // setup floor
-    floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
 
     return true;
 }
@@ -268,32 +206,27 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
-    scene teapot = { "D:\\models\\obj\\teapot.obj" , yUp, 100, 10, vec3(1,1,1) * 120 };
-    scene panter = { "D:\\models\\lowpoly\\panter.obj" , zUp, 100, 10, vec3(1,1,1) * 120 };
-    scene bunny = { "D:\\models\\obj\\bunny.obj", yUp, 50, 10, vec3(1,1,1) * 120 };
-    scene dragon = { "D:\\models\\obj\\dragon.obj" , yUp, 100, 10, vec3(-1,1,-1) * 200 };
-    scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ" , yUp, 100, 10, vec3(1,1,1) * 200 };
+    scene teapot = { "D:\\models\\obj\\teapot.obj.bin" , yUp, 100, vec3(1,1,1) * 120 };
+    scene panter = { "D:\\models\\lowpoly\\panter.obj.bin" , zUp, 100, vec3(1,1,1) * 120 };
+    scene bunny = { "D:\\models\\obj\\bunny.obj.bin", yUp, 50, vec3(1,1,1) * 120 };
+    scene dragon = { "D:\\models\\obj\\dragon.obj.bin" , yUp, 100, vec3(-1,1,-1) * 200 };
+    scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ.bin" , yUp, 100, vec3(1,1,1) * 200 };
 
     scene sc = panter;
     // init
     vec3 *fb;
     {
-        plane floor;
+        plane floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
         mesh m;
 
-        if (!setupScene(sc.filename, m, floor, sc.scale, sc.mat)) return -1;
-        std::cerr << " there are " << m.numTris << " triangles" << std::endl;
+        load_from_binary(sc.filename, m);
+        std::cerr << " there are " << m.numTris << " triangles" << ", and " << m.numBvhNodes << " bvh nodes" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
-
-        buildGrid(m, sc.cellSize);
 
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
         initRenderer(m, floor, cam, &fb, nx, ny);
-        delete[] m.tris;
-        delete[] m.g.C;
-        delete[] m.g.L;
     }
 
     clock_t start, stop;

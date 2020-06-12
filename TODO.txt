@@ -282,7 +282,6 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 	teapot scale = 100, camera.dist = 120
 	bunny scale = 50, camera.dist = 120
 	dragon scale = 100, camera.dist = 200
-	
   . DONE camera looks at scene.bounds.max.y/2
   . DONE center model on top of floor
   . DONE camera.fov = 20
@@ -298,11 +297,13 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 	teapot	 39s vs  120s (x3)
 	bunny	131s vs  937s (x7)
 	dragon  294s vs 1793s (x12)	(1024spp crashed the laptop for the grid renderer, this number is for 512spp)
-- implement basic bvh building and traversal in mega-kernel renderer (previously grid renderer)
-  don't worry about SAH for now
-  don't worry about splitting the kernels for now
+- load binary scene as is so we don't need to build bvh for now
+  do naive traversal of all triangles
+ . register usage went down to 64 registers for the uber kernel !
+ . for low poly models (panter) performance doesn't look bad 1spp in 0.06s
+- implement stackless bvh traversal
 
-- rewrite mega-kernel to render a single sample per pixel
+- [optional] rewrite mega-kernel to render a single sample per pixel
   can this reduces register usage ?
 
  NOTES

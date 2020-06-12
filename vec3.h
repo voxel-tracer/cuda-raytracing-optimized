@@ -114,6 +114,11 @@ __host__ __device__ inline float max(const vec3& v) {
     return fmaxf(v.x(), fmaxf(v.y(), v.z()));
 }
 
+__host__ __device__ inline unsigned int max_component(const vec3& v) {
+    unsigned int max = (v[0] >= v[1]) ? 0 : 1;
+    return (v[max] >= v[2]) ? max : 2;
+}
+
 __host__ __device__ inline vec3 min(const vec3& v1, const vec3& v2) {
     return vec3(
         fminf(v1.x(), v2.x()),

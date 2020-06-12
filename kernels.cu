@@ -52,15 +52,19 @@ enum OBJ_ID {
 
 struct RenderContext {
     vec3* fb;
+
     vec3* tris;
     uint32_t numTris;
+    bvh_node* bvh;
+    uint32_t numBvhNodes;
     bbox bounds;
-    grid g;
+
+    plane floor;
+
     int nx;
     int ny;
     int ns;
     camera cam;
-    plane floor;
 
     sphere light = sphere(vec3(-2000, 0, 5000), 500);
     vec3 lightColor = vec3(1, 1, 1) * 100;
@@ -112,34 +116,19 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
 
     float closest = FLT_MAX;
 
-    // loop through grid cells
-    const grid& g = context.g;
-    for (uint32_t cz = 0, ci = 0; cz < g.size.z(); cz++) {
-        for (uint32_t cy = 0; cy < g.size.y(); cy++) {
-            for (uint32_t cx = 0; cx < g.size.x(); cx++, ci++) {
-                if (g.C[ci] == g.C[ci + 1]) continue; // empty cell
-                // check if ray intersects cell bounds
-                bbox cbounds(
-                    vec3(cx, cy, cz) * g.cellSize + context.bounds.min,
-                    vec3(cx + 1, cy + 1, cz + 1) * g.cellSize + context.bounds.min
-                );
-                if (!hit_bbox(cbounds, r, closest)) continue; // ray doesn't intersect with cell's bounds
+    // loop through all triangles
+    for (uint32_t t = 0; t < context.numTris; t++) {
+        float u, v;
+        float hitT = triangleHit(context.tris + t * 3, r, t_min, closest, u, v);
+        if (hitT < FLT_MAX) {
+            if (isShadow) return 0.0f;
 
-                // loop through cell's triangles
-                for (uint32_t idx = g.C[ci]; idx < g.C[ci + 1]; idx++) {
-                    float u, v;
-                    float hitT = triangleHit(context.tris + g.L[idx] * 3, r, t_min, closest, u, v);
-                    if (hitT < FLT_MAX) {
-                        if (isShadow) return 0.0f;
-
-                        closest = hitT;
-                        rec.triId = g.L[idx];
-                        rec.u = u;
-                        rec.v = v;
-                    }
-                }
-            }
+            closest = hitT;
+            rec.triId = t;
+            rec.u = u;
+            rec.v = v;
         }
+
     }
 
     return closest;
@@ -347,7 +336,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
@@ -356,20 +345,27 @@ initRenderer(const mesh m, plane floor, const camera cam, vec3 **fb, int nx, int
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
+    // copy scene to device
+    vec3* vertices = new vec3[m.numTris * 3];
+    for (auto t = 0, idx = 0; t < m.numTris; t++) {
+        const triangle& tri = m.tris[t];
+        for (auto v = 0; v < 3; v++, idx++)
+            vertices[idx] = tri.v[v];
+    }
+
     checkCudaErrors(cudaMalloc((void**)&renderContext.tris, m.numTris * 3 * sizeof(vec3)));
-    checkCudaErrors(cudaMemcpy(renderContext.tris, m.tris, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, vertices, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, m.numBvhNodes * sizeof(bvh_node)));
+    checkCudaErrors(cudaMemcpy(renderContext.bvh, m.bvh, m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
     renderContext.numTris = m.numTris;
+    renderContext.numBvhNodes = m.numBvhNodes;
     renderContext.bounds = m.bounds;
 
-    // copy grid to gpu
-    renderContext.g = m.g;
-    checkCudaErrors(cudaMalloc((void**)&renderContext.g.C, m.g.sizeC() * sizeof(uint32_t)));
-    checkCudaErrors(cudaMemcpy(renderContext.g.C, m.g.C, m.g.sizeC() * sizeof(uint32_t), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMalloc((void**)&renderContext.g.L, m.g.sizeL() * sizeof(uint32_t)));
-    checkCudaErrors(cudaMemcpy(renderContext.g.L, m.g.L, m.g.sizeL() * sizeof(uint32_t), cudaMemcpyHostToDevice));
     renderContext.cam = cam;
 
     renderContext.initStats();
+
+    delete[] vertices;
 }
 
 extern "C" void
