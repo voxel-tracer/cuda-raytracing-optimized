@@ -143,6 +143,10 @@ __host__ __device__ inline vec3 floor(const vec3& v) {
     return vec3(floorf(v.x()), floorf(v.y()), floorf(v.z()));
 }
 
+__host__ __device__ inline bool isnan(const vec3& v) {
+    return isnan(v.x()) || isnan(v.y()) || isnan(v.z());
+}
+
 __host__ __device__ inline vec3& vec3::operator+=(const vec3 &v){
     e[0]  += v.e[0];
     e[1]  += v.e[1];

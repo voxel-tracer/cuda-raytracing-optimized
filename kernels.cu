@@ -180,6 +180,8 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
 
     // sample sphere by solid angle
     const float cosAMax = sqrt(1.0f - context.light.radius * context.light.radius / (p.origin - context.light.center).squared_length());
+    if (isnan(cosAMax)) return false; // if the light radius is too big and it reaches the model, this will be null
+
     const float eps1 = rnd(p.rng);
     const float eps2 = rnd(p.rng);
     const float cosA = 1.0f - eps1 + eps1 * cosAMax;
