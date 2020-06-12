@@ -47,7 +47,8 @@ enum OBJ_ID {
 #define NUM_RAYS_LOW_POWER              12
 #define NUM_RAYS_EXCEED_MAX_BOUNCE      13
 #define NUM_RAYS_RUSSIAN_KILL           14
-#define NUM_RAYS_SIZE                   15
+#define NUM_RAYS_NAN                    15
+#define NUM_RAYS_SIZE                   16
 #endif
 
 struct RenderContext {
@@ -95,6 +96,8 @@ struct RenderContext {
         std::cerr << " power < 0.01        : " << std::fixed << numRays[NUM_RAYS_LOW_POWER] << std::endl;
         std::cerr << " exceeded max bounce : " << std::fixed << numRays[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
         std::cerr << " russian roulette    : " << std::fixed << numRays[NUM_RAYS_RUSSIAN_KILL] << std::endl;
+        if (numRays[NUM_RAYS_NAN] > 0)
+            std::cerr << "*** " << numRays[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
 #else
     __device__ void rayStat(int type) const {}
@@ -328,6 +331,9 @@ __global__ void render(const RenderContext context) {
         color(context, p);
         // once color() is done, p.color will contain all the light received through p
         col += p.color;
+#ifdef STATS
+        if (isnan(p.color)) context.rayStat(NUM_RAYS_NAN);
+#endif
     }
     // color is specific to the pixel being traced, 
     col /= float(context.ns);
