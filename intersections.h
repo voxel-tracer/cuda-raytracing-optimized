@@ -4,12 +4,12 @@
 #include "ray.h"
 #include "helper_structs.h"
 
-__device__ bool hit_bbox(const bbox& bb, const ray& r, float t_max) {
+__device__ bool hit_bbox(const vec3& bmin, const vec3& bmax, const ray& r, float t_max) {
     float t_min = 0.001f;
     for (int a = 0; a < 3; a++) {
         float invD = 1.0f / r.direction()[a];
-        float t0 = (bb.min[a] - r.origin()[a]) * invD;
-        float t1 = (bb.max[a] - r.origin()[a]) * invD;
+        float t0 = (bmin[a] - r.origin()[a]) * invD;
+        float t1 = (bmax[a] - r.origin()[a]) * invD;
         if (invD < 0.0f) {
             float tmp = t0; t0 = t1; t1 = tmp;
         }

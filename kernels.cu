@@ -58,6 +58,8 @@ struct RenderContext {
     uint32_t numTris;
     bvh_node* bvh;
     uint32_t numBvhNodes;
+    uint32_t firstLeafIdx;
+    uint32_t numPrimitivesPerLeaf = 5; //TODO load this from bin file
     bbox bounds;
 
     plane floor;
@@ -108,8 +110,59 @@ struct RenderContext {
 
 RenderContext renderContext;
 
+__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, tri_hit& rec, bool isShadow) {
+    bool down = true; 
+    int idx = 1;
+    float closest = FLT_MAX;
+    unsigned int bitStack = 0;
+
+    while (true) {
+        if (down) {
+            bvh_node node = context.bvh[idx];
+            if (hit_bbox(node.min(), node.max(), r, closest)) {
+                if (idx >= context.firstLeafIdx) { // leaf node
+                    int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
+                    for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
+                        float u, v;
+                        float hitT = triangleHit(context.tris + (first + i) * 3, r, t_min, closest, u, v);
+                        if (hitT < FLT_MAX) {
+                            if (isShadow) return 0.0f;
+
+                            closest = hitT;
+                            rec.triId = first + i;
+                            rec.u = u;
+                            rec.v = v;
+                        }
+                    }
+                    down = false;
+                } else { // internal node
+                    // current -> left or right
+                    const int childIdx = signbit(r.direction()[node.split_axis()]); // 0=left, 1=right
+                    bitStack = (bitStack << 1) + childIdx; // push current child idx in the stack
+                    idx = (idx << 1) + childIdx;
+                }
+            } else { // ray didn't intersect the node, backtrack
+                down = false;
+            }
+        } else if (idx == 1) { // we backtracked up to the root node
+            break;
+        } else { // back tracking
+            const int currentChildIdx = bitStack & 1;
+            if ((idx & 1) == currentChildIdx) { // node == current child, visit sibling
+                idx += -2 * currentChildIdx + 1; // node = node.sibling
+                down = true;
+            } else { // we visited both siblings, backtrack
+                bitStack = bitStack >> 1;
+                idx = idx >> 1; // node = node.parent
+            }
+        }
+    }
+
+    return closest;
+}
+
 __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
-    if (!hit_bbox(context.bounds, r, t_max)) {
+    if (!hit_bbox(context.bounds.min, context.bounds.max, r, t_max)) {
 #ifdef STATS
         if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
@@ -117,24 +170,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
         return FLT_MAX;
     }
 
-    float closest = FLT_MAX;
-
-    // loop through all triangles
-    for (uint32_t t = 0; t < context.numTris; t++) {
-        float u, v;
-        float hitT = triangleHit(context.tris + t * 3, r, t_min, closest, u, v);
-        if (hitT < FLT_MAX) {
-            if (isShadow) return 0.0f;
-
-            closest = hitT;
-            rec.triId = t;
-            rec.u = u;
-            rec.v = v;
-        }
-
-    }
-
-    return closest;
+    return hitBvh(r, context, t_min, rec, isShadow);
 }
 
 __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, intersection &inters) {
@@ -367,6 +403,7 @@ initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, in
     checkCudaErrors(cudaMemcpy(renderContext.bvh, m.bvh, m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
     renderContext.numTris = m.numTris;
     renderContext.numBvhNodes = m.numBvhNodes;
+    renderContext.firstLeafIdx = m.numBvhNodes / 2;
     renderContext.bounds = m.bounds;
 
     renderContext.cam = cam;
