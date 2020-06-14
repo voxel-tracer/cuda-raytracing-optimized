@@ -7,7 +7,7 @@
 #include "scene_materials.h"
 
 #define STATS
-#define RUSSIAN_ROULETTE
+//#define RUSSIAN_ROULETTE
 
 #define EPSILON 0.01f
 
@@ -123,6 +123,8 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 if (idx >= context.firstLeafIdx) { // leaf node
                     int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
                     for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
+                        if (isinf(context.tris[first * 3].x()))
+                            break; // we reached the end of the primitives buffer
                         float u, v;
                         float hitT = triangleHit(context.tris + (first + i) * 3, r, t_min, closest, u, v);
                         if (hitT < FLT_MAX) {
@@ -190,11 +192,12 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
 
-        if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
-            inters.objId = PLANE;
-            inters.normal = context.floor.norm;
-        }
-        else if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
+        //    inters.objId = PLANE;
+        //    inters.normal = context.floor.norm;
+        //}
+        //else 
+        if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
         }
@@ -245,7 +248,7 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef STATS
     bool fromMesh = false;
 #endif
-    for (p.bounce = 0; p.bounce < 200; p.bounce++) {
+    for (p.bounce = 0; p.bounce < 10; p.bounce++) {
 #ifdef STATS
         bool primary = p.bounce == 0;
         context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
@@ -262,9 +265,12 @@ __device__ void color(const RenderContext& context, path& p) {
             else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
 #endif
             // sky color
-            float t = 0.5f * (p.rayDir.y() + 1.0f);
-            vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
-            p.color += p.attenuation * c;
+            //float t = 0.5f * (p.rayDir.y() + 1.0f);
+            //vec3 c = (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+            //p.color += p.attenuation * c;
+
+            // constant sky color of (0.5, 0.5, 0.5)
+            p.color += p.attenuation * vec3(0.5f, 0.5f, 0.5f);
 
             return;
         }

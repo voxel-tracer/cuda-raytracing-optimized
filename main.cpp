@@ -195,10 +195,10 @@ bool deprecated_setupScene(const char * filename, mesh& m, float scale, const ma
 
 int main() {
     bool perf = false;
-    bool fast = true;
-    int nx = (!perf && !fast) ? 1200 : 600;
-    int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 1 : 4096) : 4;
+    bool fast = false;
+    int nx = (!perf && !fast) ? 512 : 512;
+    int ny = (!perf && !fast) ? 512 : 512;
+    int ns = !perf ? (fast ? 1 : 512) : 4;
     int tx = 8;
     int ty = 8;
 
@@ -212,7 +212,7 @@ int main() {
     scene dragon = { "D:\\models\\obj\\dragon.obj.bin" , yUp, 100, vec3(-1,1,-1) * 200 };
     scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ.bin" , yUp, 100, vec3(1,1,1) * 200 };
 
-    scene sc = panter;
+    scene sc = dragon;
     // init
     vec3 *fb;
     {
