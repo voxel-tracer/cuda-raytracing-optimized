@@ -206,6 +206,7 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
+    scene ball = { "D:\\models\\/lowpoly/icosphere.obj.bin" , yUp, 50, vec3(1,1,1) * 120 };
     scene teapot = { "D:\\models\\obj\\teapot.obj.bin" , yUp, 100, vec3(1,1,1) * 120 };
     scene panter = { "D:\\models\\lowpoly\\panter.obj.bin" , zUp, 100, vec3(1,1,1) * 120 };
     scene bunny = { "D:\\models\\obj\\bunny.obj.bin", yUp, 50, vec3(1,1,1) * 120 };

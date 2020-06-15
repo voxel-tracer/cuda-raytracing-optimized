@@ -300,7 +300,7 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 	dragon  294s vs 1793s (x12)	(1024spp crashed the laptop for the grid renderer, this number is for 512spp)
 - DONE fixed NaN issue in generateShadowRays() and somehow register usage went down 64 > 56 !!!
 
-- implement basic bvh building and traversal in mega-kernel renderer (previously grid renderer)
+- DONE implement basic bvh building and traversal in mega-kernel renderer (previously grid renderer)
   don't worry about SAH for now
   don't worry about splitting the kernels for now
   . register count 62
@@ -313,7 +313,17 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 	dragon			25s				294s		11.75x		71.2x
   . uber kernel is much faster than wavefront renderer !!!
 
-- rewrite mega-kernel to render a single sample per pixel
+- DONE there is slight difference in the rendering between spheres and cuda-raytracing
+ . cuda-raytracing is consistent before/after bvh so its not related to BVH
+
+- collect various stats for cuda-raytracing with/without BVH
+ . add easy way to disable BVH traversal
+ . explore various materials
+ . identify useful stats and hints about when BVH is less performant
+- go through my optimization notes and identify what kind of stats I should track to
+  identify what to optimize next
+
+- [optional] rewrite mega-kernel to render a single sample per pixel
   can this reduces register usage ?
 
  NOTES
