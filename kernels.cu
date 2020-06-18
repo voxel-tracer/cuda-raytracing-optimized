@@ -7,7 +7,8 @@
 #include "scene_materials.h"
 
 #define STATS
-//#define RUSSIAN_ROULETTE
+#define RUSSIAN_ROULETTE
+#define BVH
 
 #define EPSILON 0.01f
 
@@ -172,7 +173,24 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
         return FLT_MAX;
     }
 
+#ifdef BVH
     return hitBvh(r, context, t_min, rec, isShadow);
+#else
+    float closest = FLT_MAX;
+    for (uint32_t i = 0; i < context.numTris; i++) {
+        float u, v;
+        float hitT = triangleHit(context.tris + i * 3, r, t_min, closest, u, v);
+        if (hitT < FLT_MAX) {
+            if (isShadow) return 0.0f;
+
+            closest = hitT;
+            rec.triId = i;
+            rec.u = u;
+            rec.v = v;
+        }
+    }
+    return closest;
+#endif // BVH
 }
 
 __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, intersection &inters) {
@@ -192,12 +210,11 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
 
-        //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
-        //    inters.objId = PLANE;
-        //    inters.normal = context.floor.norm;
-        //}
-        //else 
-        if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
+            inters.objId = PLANE;
+            inters.normal = context.floor.norm;
+        }
+        else if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
         }
