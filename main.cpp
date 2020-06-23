@@ -195,7 +195,7 @@ bool deprecated_setupScene(const char * filename, mesh& m, float scale, const ma
 
 int main() {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 512 : 512;
     int ny = (!perf && !fast) ? 512 : 512;
     int ns = !perf ? (fast ? 1 : 512) : 4;
@@ -227,7 +227,7 @@ int main() {
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
-        initRenderer(m, floor, cam, &fb, nx, ny);
+        initRenderer(m, floor, cam, &fb, nx, ny, 10);
     }
 
     clock_t start, stop;

@@ -68,6 +68,7 @@ struct RenderContext {
     int nx;
     int ny;
     int ns;
+    int maxDepth;
     camera cam;
 
     sphere light = sphere(vec3(-2000, 0, 5000), 500);
@@ -265,7 +266,7 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef STATS
     bool fromMesh = false;
 #endif
-    for (p.bounce = 0; p.bounce < 10; p.bounce++) {
+    for (p.bounce = 0; p.bounce < context.maxDepth; p.bounce++) {
 #ifdef STATS
         bool primary = p.bounce == 0;
         context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
@@ -403,10 +404,11 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, int ny) {
+initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, int ny, int maxDepth) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
+    renderContext.maxDepth = maxDepth;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));

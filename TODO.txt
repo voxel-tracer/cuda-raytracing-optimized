@@ -53,12 +53,12 @@ FEATURES
 - advanced materials: implement Disney BRDF and add UI to configure materials
   MDL seem to be a better alternative
 - allow setting different material per original model color
-- integrate with Optiz denoiser to greatly improve the render quality of my preview renderer
+- integrate with Optix denoiser to greatly improve the render quality of my preview renderer
 
  IMPROVEMENTS IN NO PARTICULAR ORDER
  -----------------------------------
 - DONE use MeshLab to simplify complex models so they can fit in constant memory
-- when importing a model, define its orientation (up vector) and make sure its loading
+- DONE when importing a model, define its orientation (up vector) and make sure its loading
   in the correct orientation. Makes it easier to use a standard camera position and orient
   the environment map
 - camera distance is computed automatically such that the whole model is visible in the viewport
@@ -83,21 +83,6 @@ FEATURES
 - explore using Aila's ray-triangle intersection logic that precomputes a transformation matrix at startup
   this may reduce register usage and improve rendering performance
 
- POTENTIAL DIRECTION
- -------------------
-* simple OpenGL model viewer
- . easily set camera position
- . easily rotate/translate the model
- . easily orient light
- . easily configure render settings: materials, light, ...
- . ideally starts CUDA renderer and displays progressive rendering
-* use MDL as a guide to write my own easy to combine material blocks
-  e.g. coat, dielectric and tinted glass share the same fresnel reflection/refraction logic
-   find ways to make it easy to combine blocks of code to build those materials
-- instead of writing generic material scattering logic, write custom code that handles the specific
-  materials I want to render
-- eventually I can move to a code generation/templating so I can generate kernel code on demand
-* move rendering logic to the cloud and build a web editor to interact with the renderer using PixiJS
 ---------------------------------------------------------------------------------------------------------
 PHASE I.1: POLYGON RENDERER
 ---------------------------------------------------------------------------------------------------------
@@ -115,20 +100,10 @@ PHASE I.1: POLYGON RENDERER
 
  TASKS
  -----
- - DONE render obj model
+- DONE render obj model
 - DONE floor
 - DONE light and next event estimation
 - DONE Lambert-Beer absorption
-
- NEXT (move these to their own steps later)
- ----
-- apply basic optimizations from my previous work to speedup the rendering a bit
- . we should expect very good speedup with not much effort
-- add subsurface-scattering material
-- add OpenGL/imGUI viewer (from my spheres renderer)
- . quickly configure the scene to get high quality renderers
-- Subsurface scattering material
- . https://computergraphics.stackexchange.com/questions/5214/a-recent-approach-for-subsurface-scattering
 
  PERF
  ----
@@ -237,11 +212,11 @@ PHASE II SUPPORT LARGE TRIANGLE MESH MODELS
  NOTES
  -----
 - DONE we should start with spheres project and update it to support triangle meshes
-- update bvh-renderer to be at par with grid-renderer:
+- NOPE update bvh-renderer to be at par with grid-renderer:
  . colored background
  . support for multiple materials
  . floor/box with dedicated material
-- start by making minimum changes to support triangle meshes, we don't want to refactor the code as its a big
+- DONE start by making minimum changes to support triangle meshes, we don't want to refactor the code as its a big
   mess and eventually we want to move away from that project
 - current spheres project no longer uses constant or texture memory
  . not sure why but I guess that's good as it will be less distraction when analysing its perf
@@ -253,7 +228,7 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
  -----
 - DONE start by removing colors and updating code accordingly to only use modelColor
  . bModelColor always set to true	
-- update loadScene() to load triangle meshes using tinyobj
+- DONE update loadScene() to load triangle meshes using tinyobj
  . DONE introduce tri struct only needed during loading/bvh building
 	. has a center field
  . DONE update scene to use tri* instead of sphere*
@@ -351,13 +326,34 @@ PHASE II.1 UPDATES SPHERES TO SUPPORT TRIANGLE MESHES
 - for large models, preview window lags too much
  . uncouple rendering of the window from rendering of the model
  . add "preview" mode that renders a coarse version of the model (maybe stop at some level of bvh)
-- grid-based renderer could benefit from resume feature. This way we can render incrementally especially
-  for complex material (like subsurface scattering)
-- add scene struct to grid-based renderer
-- material that draws the borders of triangles on top of the material
+- DONE add scene struct to grid-based renderer
+- NOPE material that draws the borders of triangles on top of the material
 
 ----------------------------------------------------------------------------------------------------------
-PHASE II.2 OPTIMIZE BVH MEGA KERNEL
+PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
+----------------------------------------------------------------------------------------------------------
+ GOAL
+ ----
+- load complex .obj scene with textured materials
+- focus on one specific scene: staircase
+- use KnightCrawler's PathTracer as a reference to load and render the scene
+	https://github.com/knightcrawler25/GLSL-PathTracer
+ . for now only use its camera/light config
+- add minimum set of features needed to render the scene
+- hard code scene in code (no need to implement .scene loading)
+- this provides a concrete goal to target and great looking scenes to render
+- once I'm able to render the scene as is I can move to the next phase (optimization)
+
+ TASKS
+ -----
+- DONE go through the scene description and identify all missing features
+ . maxDepth configurable (maxBounce)
+ . diffuse albedo texture
+ . replace quad light with sphere light
+ . load multiple meshes, each with a dedicated material
+- DONE make maxDepth configurable
+----------------------------------------------------------------------------------------------------------
+PHASE II.3 OPTIMIZE BVH MEGA KERNEL
 ----------------------------------------------------------------------------------------------------------
  GOAL
  ----
@@ -390,6 +386,13 @@ PHASE II.2 OPTIMIZE BVH MEGA KERNEL
 - looking at my older notes, it looks like secondary rays divergence is one of the main bottlenecks and
   even if we fix the idle threads (reuse threads that are done) it won't improve the main problem and may
   make things worse as it will reduce the coherence of primary rays
+- list of optimizations
+ . store upper BVH levels in constant memory
+ . load 2 BVH nodes at a time
+ . store lower BVH levels in texture memory
+ . store triangles in texture memory
+ . use woopified triangle representation
+ .implement SAH BVH building algo
 
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
@@ -400,3 +403,20 @@ GENERAL NOTES
  . flop_count_dp: number of double precision operations (useful to confirm we aren't using any)
  . warp_execution_efficiency: lower values indicate a large number of idle threads (warps with threads that are done processing their path)
  . warp_nonpred_execution_efficiency: lower values indicate a large number of active threads with divergent execution
+
+----------------------------------------------------------------------------------------------------------
+POTENTIAL TARGET GOALS
+----------------------------------------------------------------------------------------------------------
+- simple OpenGL model viewer
+ . easily set camera position
+ . easily rotate/translate the model
+ . easily orient light
+ . easily configure render settings: materials, light, ...
+ . ideally starts CUDA renderer and displays progressive rendering
+- use MDL as a guide to write my own easy to combine material blocks
+  e.g. coat, dielectric and tinted glass share the same fresnel reflection/refraction logic
+   find ways to make it easy to combine blocks of code to build those materials
+ . instead of writing generic material scattering logic, write custom code that handles the specific
+  materials I want to render
+ . eventually I can move to a code generation/templating so I can generate kernel code on demand
+- move rendering logic to the cloud and build a web editor to interact with the renderer using PixiJS
