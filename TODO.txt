@@ -352,8 +352,49 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . replace quad light with sphere light
  . load multiple meshes, each with a dedicated material
 - DONE make maxDepth configurable
+
+- move BVH building logic to current project as a sub-project
+ . single main file with all necessary logic
+ . outputs .bvh
+ . generates header with magic word and version
+- build BVH from multiple meshes
+ . each triangle has an associated meshID (unsigned char)
+ . simplest solution is to open all meshes and collect their stats
+   create appropriate arrays
+   then open the meshes again and read the data
+ . color() uses meshID to use the appropriate material (move logic to scatter())
+ . load staircase scene and render it using different colors for each mesh
+- properly handle texture coordinates
+ . load texture coordinates and store them with triangles in BVH
+   when texCoords not available just put (0, 0)
+ . hitMesh() interpolates proper texCoords (tu, tv) using triangle barycentric coordinates
+ . add texture-dbg material that blends 4 colors according to (tu, tv)
+ . load casual-effects textured cube and confirm it looks as expected
+- add support for albedo textures
+ . struct Texture { 
+	int width, int height; 
+	float *data;
+   }
+ . initKernel() accepts a Texture[]
+   if non empty, create corresponding device textures and stores Texture[] in RenderContext
+ . cubeMaterial() uses its default.png texture as albedo texture
+ . add proper materials for the staircase scene (hardcode them)
+ . see if we need bilinear filtering for the textures and interpolated normals 
+
+- support interpolated normals using vertex normals loaded from .obj (when available)
+
+ NOTES
+ -----
+- for now we store with each triangle all its associated infos: meshID, texCoords, ...
+  we may want to move those outside BVH later on
+- existing models
+ . bunny: has texture coords, vertex normals
+ . dragon: has vertex normals
+ . cube: has texture coords, vertex normals, and a default texture
+- we may want to store textures as uint32 colors to save space
+  we can even use CUDA texture to benefit from bilinear filtering if needed
 ----------------------------------------------------------------------------------------------------------
-PHASE II.3 OPTIMIZE BVH MEGA KERNEL
+PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
 ----------------------------------------------------------------------------------------------------------
  GOAL
  ----
