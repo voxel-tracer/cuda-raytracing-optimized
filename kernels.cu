@@ -205,7 +205,7 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
 
         inters.objId = TRIMESH;
         triangle tri = context.tris[triHit.triId];
-
+        inters.meshID = tri.meshID;
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
@@ -312,8 +312,12 @@ __device__ void color(const RenderContext& context, path& p) {
         inters.inside = p.inside;
 
         scatter_info scatter(inters);
-        if (inters.objId == TRIMESH)
-            model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+        if (inters.objId == TRIMESH) {
+            if (inters.meshID == 0)
+                model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
+            else
+                diffuse_bsdf(scatter, inters, vec3(1, 0, 0), p.rng);
+        }
         else 
             floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 

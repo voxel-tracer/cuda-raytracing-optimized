@@ -13,6 +13,7 @@ struct mat3x3 {
 
 struct intersection {
     unsigned int objId; // object that was intersected
+    unsigned char meshID;
     float t;
     vec3 p;
     vec3 normal; // always faces the ray
