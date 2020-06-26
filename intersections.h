@@ -33,21 +33,18 @@ __device__ float planeHit(const plane& p, const ray& r, float t_min, float t_max
     return t;
 }
 
-__device__ float triangleHit(const vec3* tri, const ray& r, float t_min, float t_max, float & hitU, float &hitV) {
+__device__ float triangleHit(const triangle &tri, const ray& r, float t_min, float t_max, float& hitU, float& hitV) {
     const float EPSILON = 0.0000001;
-    vec3 vertex0 = tri[0];
-    vec3 vertex1 = tri[1];
-    vec3 vertex2 = tri[2];
     vec3 edge1, edge2, h, s, q;
     float a, f, u, v;
-    edge1 = vertex1 - vertex0;
-    edge2 = vertex2 - vertex0;
+    edge1 = tri.v[1] - tri.v[0];
+    edge2 = tri.v[2] - tri.v[0];
     h = cross(r.direction(), edge2);
     a = dot(edge1, h);
     if (a > -EPSILON && a < EPSILON)
         return FLT_MAX;    // This ray is parallel to this triangle.
     f = 1.0 / a;
-    s = r.origin() - vertex0;
+    s = r.origin() - tri.v[0];
     u = f * dot(s, h);
     if (u < 0.0 || u > 1.0)
         return FLT_MAX;

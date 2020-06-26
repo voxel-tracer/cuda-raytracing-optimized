@@ -55,7 +55,7 @@ enum OBJ_ID {
 struct RenderContext {
     vec3* fb;
 
-    vec3* tris;
+    triangle* tris;
     uint32_t numTris;
     bvh_node* bvh;
     uint32_t numBvhNodes;
@@ -125,10 +125,11 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 if (idx >= context.firstLeafIdx) { // leaf node
                     int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
                     for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
-                        if (isinf(context.tris[first * 3].x()))
+                        const triangle tri = context.tris[first + i];
+                        if (isinf(tri.v[0].x()))
                             break; // we reached the end of the primitives buffer
                         float u, v;
-                        float hitT = triangleHit(context.tris + (first + i) * 3, r, t_min, closest, u, v);
+                        float hitT = triangleHit(tri, r, t_min, closest, u, v);
                         if (hitT < FLT_MAX) {
                             if (isShadow) return 0.0f;
 
@@ -203,11 +204,9 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
-        vec3 v0 = context.tris[triHit.triId * 3];
-        vec3 v1 = context.tris[triHit.triId * 3 + 1];
-        vec3 v2 = context.tris[triHit.triId * 3 + 2];
+        triangle tri = context.tris[triHit.triId];
 
-        inters.normal = unit_vector(cross(v1 - v0, v2 - v0));
+        inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
 
@@ -414,16 +413,8 @@ initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, in
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
-    // copy scene to device
-    vec3* vertices = new vec3[m.numTris * 3];
-    for (auto t = 0, idx = 0; t < m.numTris; t++) {
-        const triangle& tri = m.tris[t];
-        for (auto v = 0; v < 3; v++, idx++)
-            vertices[idx] = tri.v[v];
-    }
-
-    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, m.numTris * 3 * sizeof(vec3)));
-    checkCudaErrors(cudaMemcpy(renderContext.tris, vertices, m.numTris * 3 * sizeof(vec3), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, m.numTris * sizeof(triangle)));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, m.tris, m.numTris * sizeof(triangle), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, m.numBvhNodes * sizeof(bvh_node)));
     checkCudaErrors(cudaMemcpy(renderContext.bvh, m.bvh, m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
     renderContext.numTris = m.numTris;
@@ -434,8 +425,6 @@ initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, in
     renderContext.cam = cam;
 
     renderContext.initStats();
-
-    delete[] vertices;
 }
 
 extern "C" void
