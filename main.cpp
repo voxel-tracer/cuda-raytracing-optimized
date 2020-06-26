@@ -62,8 +62,15 @@ uint32_t LinearToSRGB(float x)
 }
 
 
-void load_from_binary(const char* input, mesh& m) {
+bool loadBVH(const char* input, mesh& m, int &numPrimitivesPerLeaf) {
     std::fstream in(input, std::ios::in | std::ios::binary);
+
+    const char* HEADER = "BVH_00.02";
+    char* header = new char[sizeof(HEADER)];
+    in.read(header, sizeof(HEADER));
+    if (!strcmp(HEADER, header))
+        return false;
+
     in.read((char*)&m.numTris, sizeof(int));
     m.tris = new triangle[m.numTris];
     in.read((char*)m.tris, sizeof(triangle) * m.numTris);
@@ -74,6 +81,8 @@ void load_from_binary(const char* input, mesh& m) {
 
     in.read((char*)&m.bounds.min, sizeof(vec3));
     in.read((char*)&m.bounds.max, sizeof(vec3));
+
+    in.read((char*)&numPrimitivesPerLeaf, sizeof(int));
 }
 
 bool deprecated_setupScene(const char * filename, mesh& m, float scale, const mat3x3& mat) {
@@ -210,17 +219,24 @@ int main() {
     scene teapot = { "D:\\models\\obj\\teapot.obj.bin" , yUp, 100, vec3(1,1,1) * 120 };
     scene panter = { "D:\\models\\lowpoly\\panter.obj.bin" , zUp, 100, vec3(1,1,1) * 120 };
     scene bunny = { "D:\\models\\obj\\bunny.obj.bin", yUp, 50, vec3(1,1,1) * 120 };
-    scene dragon = { "D:\\models\\obj\\dragon.obj.bin" , yUp, 100, vec3(-1,1,-1) * 200 };
+    scene dragon = { "D:\\models\\obj\\dragon.bvh" , yUp, 100, vec3(-1,1,-1) * 200 };
+    scene dragonBunny = { "D:\\models\\obj\\dragon_bunny.bvh" , yUp, 100, vec3(-1,1,-1) * 200 };
     scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ.bin" , yUp, 100, vec3(1,1,1) * 200 };
 
-    scene sc = dragon;
+    scene sc = dragonBunny;
     // init
     vec3 *fb;
     {
         plane floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
         mesh m;
+        int numPrimitivesPerLeaf = 0;
 
-        load_from_binary(sc.filename, m);
+        if (!loadBVH(sc.filename, m, numPrimitivesPerLeaf)) {
+            std::cerr << "Failed to load bvh file" << std::endl;
+            std::cerr.flush();
+            return -1;
+        }
+
         std::cerr << " there are " << m.numTris << " triangles" << ", and " << m.numBvhNodes << " bvh nodes" << std::endl;
         std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
 

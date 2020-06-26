@@ -58,10 +58,11 @@ struct bbox {
 
 struct triangle {
     triangle() {}
-    triangle(vec3 v0, vec3 v1, vec3 v2) {
+    triangle(vec3 v0, vec3 v1, vec3 v2, int mID) {
         v[0] = v0;
         v[1] = v1;
         v[2] = v2;
+        meshID = mID;
         update();
     }
 
@@ -71,6 +72,7 @@ struct triangle {
 
     vec3 v[3];
     vec3 center;
+    unsigned char meshID;
 };
 
 struct bvh_node {
