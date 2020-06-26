@@ -353,15 +353,17 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . load multiple meshes, each with a dedicated material
 - DONE make maxDepth configurable
 
-- move BVH building logic to current project as a sub-project
- . single main file with all necessary logic
+- DONE move BVH building logic to current project as a sub-project
+ . create new bvh-builder project
+ . copy all bvh building logic in main.cpp
  . outputs .bvh
  . generates header with magic word and version
 - build BVH from multiple meshes
- . each triangle has an associated meshID (unsigned char)
- . simplest solution is to open all meshes and collect their stats
+ . DONE each triangle has an associated meshID (unsigned char)
+ . DONE simplest solution is to open all meshes and collect their stats
    create appropriate arrays
    then open the meshes again and read the data
+ . DONE test it by combining two objs together
  . color() uses meshID to use the appropriate material (move logic to scatter())
  . load staircase scene and render it using different colors for each mesh
 - properly handle texture coordinates

@@ -1,0 +1,43 @@
+ALL PROJECTS
+------------
+
+ RENDER STAIRCASE SCENE
+ ----------------------
+- load staircase scene, its made up of multiple obj models that rely on simple materials along with albdeo textures
+- can provide really good visual result and the large number of triangles will be a good motivation to work on optimazing the kernels
+- doesn't require any advanced material or editor features
+- there are many more scenes are available here, including the San Miguel scene:
+	http://casual-effects.com/data/index.html
+	https://benedikt-bitterli.me/resources/
+
+-------------------------------------------------------------------------------
+ STATUES RENDERING
+ -----------------
+- focus on BRDF materials (no need for transmission, subsurface scattering)
+- render high poly models from cgtrader (non textured, clay like)
+ . I may subdivide the triangles in an externel tool to not have to interpolate the normals too much
+- works better with a basic Opengl editor that allows moving camera/light around
+  and configuring camera/light and model material (single material for whole model)
+ . preview mode similar to KnightCrawler PathTracer could work really well here
+- I may quickly implement Disney BRDF, by copying the code from somewhere else, e.g.:
+	https://github.com/knightcrawler25/Optix-PathTracer/blob/master/src/optixPathTracer/disney.cu
+
+-------------------------------------------------------------------------------
+ ANNO WII PICO8
+ --------------
+- building toolbar
+ . draw a few colored sprites at the top line of the map
+ . when mouse pressed, check if its on the toolbar
+   if it is select current sprite using the mouse position
+   if its not, draw the current sprite on the map
+- buildings have different properties (width, height, sprite)
+ . when you select the building its properties are saved in a global variable
+ . when you draw it those properties are used to draw the right number of cells with the correct sprite
+ . for now the cursor doesn't change
+- build cursor reflects the size of the building
+ . draw a rectangle instead of using map sprites
+ . but do not care about the color of the sprite
+
+- draw road lines
+
+-------------------------------------------------------------------------------
