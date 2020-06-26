@@ -11,6 +11,13 @@ ALL PROJECTS
 	https://benedikt-bitterli.me/resources/
 
 -------------------------------------------------------------------------------
+ RENDER SAN MIGUEL SCENE
+ -----------------------
+- has a lot of textures and may require sorting the rays
+- can be a good fit for an Opengl tool that allows editing the materials and render settings
+  to make it realistic
+
+-------------------------------------------------------------------------------
  STATUES RENDERING
  -----------------
 - focus on BRDF materials (no need for transmission, subsurface scattering)

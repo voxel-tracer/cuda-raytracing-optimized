@@ -364,8 +364,9 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
    create appropriate arrays
    then open the meshes again and read the data
  . DONE test it by combining two objs together
- . color() uses meshID to use the appropriate material (move logic to scatter())
+ . DONE color() uses meshID to use the appropriate material (move logic to scatter())
  . load staircase scene and render it using different colors for each mesh
+ . set the correct color for all materials that don't require an albedoTexture
 - properly handle texture coordinates
  . load texture coordinates and store them with triangles in BVH
    when texCoords not available just put (0, 0)

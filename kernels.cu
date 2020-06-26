@@ -71,8 +71,8 @@ struct RenderContext {
     int maxDepth;
     camera cam;
 
-    sphere light = sphere(vec3(-2000, 0, 5000), 500);
-    vec3 lightColor = vec3(1, 1, 1) * 100;
+    sphere light = sphere(vec3(52.514355, 715.686951, -272.620972), 100);
+    vec3 lightColor = vec3(1, 1, 1) * 80;
 
 #ifdef STATS
     uint64_t* numRays;
@@ -313,10 +313,10 @@ __device__ void color(const RenderContext& context, path& p) {
 
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH) {
-            if (inters.meshID == 0)
+            //if (inters.meshID == 0)
                 model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
-            else
-                diffuse_bsdf(scatter, inters, vec3(1, 0, 0), p.rng);
+            //else
+            //    diffuse_bsdf(scatter, inters, vec3(1, 0, 0), p.rng);
         }
         else 
             floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
