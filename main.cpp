@@ -99,14 +99,29 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
-    scene ball = { "D:\\models\\/lowpoly/icosphere.obj.bin" , yUp, 50, vec3(1,1,1) * 120 };
-    scene teapot = { "D:\\models\\obj\\teapot.obj.bin" , yUp, 100, vec3(1,1,1) * 120 };
-    scene panter = { "D:\\models\\lowpoly\\panter.obj.bin" , zUp, 100, vec3(1,1,1) * 120 };
-    scene bunny = { "D:\\models\\obj\\bunny.obj.bin", yUp, 50, vec3(1,1,1) * 120 };
-    scene dragon = { "D:\\models\\obj\\dragon.bvh" , yUp, 100, vec3(-1,1,-1) * 200 };
-    scene dragonBunny = { "D:\\models\\obj\\dragon_bunny.bvh" , yUp, 100, vec3(-1,1,-1) * 200 };
-    scene catfolk = { "D:\\models\\lowpoly\\Character Pack 3\\files\\CatfolkRogue.OBJ.bin" , yUp, 100, vec3(1,1,1) * 200 };
-    scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1) };
+    material materials[20] = {
+        { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0 },              // Black
+        { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01 },            // Brass
+        { material_type::METAL, vec3(0.5, 0.5, 0.5), 0 },                   // BrushedAluminium (metal with texture)
+        { material_type::DIFFUSE, vec3(1, 1, 1), 0 },                       // Candles
+        { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0 }, // ChairSeat
+        { material_type::GLASS, vec3(1, 1, 1), 1.45 },                      // Glass
+        { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05 },              // Gold
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Lampshade
+        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0 },  // MagnoliaPaint
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting1
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting2
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting3
+        { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1 },                 // StainlessSteel
+        { material_type::DIFFUSE, vec3(0.15, 0.5, 0.5), 0 },                 // wallpaper
+        { material_type::DIFFUSE, vec3(0.1578596, 0.578596, 0.1578596), 0 },  // whitePaint
+        { material_type::DIFFUSE, vec3(1, 1, 1), 0 },                       // WhitePlastic
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // WoodChair
+        { material_type::DIFFUSE, vec3(0.5, 0.15, 0.15), 0 },                 // woodFloor
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // WoodLamp
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // woodstairs
+    };
+    scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20 };
 
     scene sc = staircase;
     // init
@@ -128,7 +143,7 @@ int main() {
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
-        initRenderer(m, floor, cam, &fb, nx, ny, 3);
+        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 3);
     }
 
     clock_t start, stop;

@@ -105,12 +105,25 @@ struct mesh {
     }
 };
 
+enum material_type {
+    DIFFUSE,
+    METAL,
+    GLASS
+};
+
+struct material {
+    material_type type;
+    vec3 color;
+    float param; // fuzz
+};
 
 struct scene {
     char* filename;
     mat3x3 mat;
     float scale;
     vec3 camPos;
+    material* mats;
+    int numMats;
 };
 
 struct plane {

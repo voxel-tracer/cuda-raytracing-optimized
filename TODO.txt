@@ -358,15 +358,20 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . copy all bvh building logic in main.cpp
  . outputs .bvh
  . generates header with magic word and version
-- build BVH from multiple meshes
+- DONE build BVH from multiple meshes
  . DONE each triangle has an associated meshID (unsigned char)
  . DONE simplest solution is to open all meshes and collect their stats
    create appropriate arrays
    then open the meshes again and read the data
  . DONE test it by combining two objs together
  . DONE color() uses meshID to use the appropriate material (move logic to scatter())
- . load staircase scene and render it using different colors for each mesh
- . set the correct color for all materials that don't require an albedoTexture
+ . DONE load staircase scene and render it using different colors for each mesh
+ . DONE set the correct color for all materials that don't require an albedoTexture
+- bug in BVH
+ . debug the issue
+  . DONE identify pixel that's causing the issue (413, 642)
+  . print all triangles that intersect that ray (triID and hitID)
+  . compare print of BVH vs non-BVH
 - properly handle texture coordinates
  . load texture coordinates and store them with triangles in BVH
    when texCoords not available just put (0, 0)

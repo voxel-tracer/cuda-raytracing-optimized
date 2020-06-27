@@ -10,6 +10,15 @@ __device__ vec3 hexColor(int hexValue) {
     return vec3(r, g, b) / 255.0;
 }
 
+__device__ void material_scatter(scatter_info& out, const intersection& i, const vec3& wo, const material& mat, rand_state& rng) {
+    if (mat.type == material_type::DIFFUSE)
+        diffuse_bsdf(out, i, mat.color, rng);
+    else if (mat.type == material_type::METAL)
+        glossy_bsdf(out, i, wo, mat.color, mat.param, rng);
+    else // GLASS
+        dielectric_bsdf(out, i, wo, mat.param, mat.color, 0.0f, vec3(0, 0, 0), rng);
+}
+
 __device__ void floor_coat_scatter(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
     float ior = 1.5f;
     vec3 glossy_tint(1, 1, 1); // colorless reflections

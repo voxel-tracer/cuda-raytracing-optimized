@@ -74,6 +74,8 @@ struct RenderContext {
     sphere light = sphere(vec3(52.514355, 715.686951, -272.620972), 100);
     vec3 lightColor = vec3(1, 1, 1) * 80;
 
+    material* materials;
+
 #ifdef STATS
     uint64_t* numRays;
     __device__ void rayStat(int type) const {
@@ -181,7 +183,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
     float closest = FLT_MAX;
     for (uint32_t i = 0; i < context.numTris; i++) {
         float u, v;
-        float hitT = triangleHit(context.tris + i * 3, r, t_min, closest, u, v);
+        float hitT = triangleHit(context.tris[i], r, t_min, closest, u, v);
         if (hitT < FLT_MAX) {
             if (isShadow) return 0.0f;
 
@@ -210,11 +212,12 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
 
-        if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
-            inters.objId = PLANE;
-            inters.normal = context.floor.norm;
-        }
-        else if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
+        //    inters.objId = PLANE;
+        //    inters.normal = context.floor.norm;
+        //}
+        //else 
+        if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
         }
@@ -312,12 +315,8 @@ __device__ void color(const RenderContext& context, path& p) {
         inters.inside = p.inside;
 
         scatter_info scatter(inters);
-        if (inters.objId == TRIMESH) {
-            //if (inters.meshID == 0)
-                model_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
-            //else
-            //    diffuse_bsdf(scatter, inters, vec3(1, 0, 0), p.rng);
-        }
+        if (inters.objId == TRIMESH)
+            material_scatter(scatter, inters, p.rayDir, context.materials[inters.meshID], p.rng);
         else 
             floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 
@@ -407,7 +406,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, int ny, int maxDepth) {
+initRenderer(const mesh& m, plane floor, const camera cam, const material* materials, int numMats, vec3 **fb, int nx, int ny, int maxDepth) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
@@ -425,6 +424,9 @@ initRenderer(const mesh& m, plane floor, const camera cam, vec3 **fb, int nx, in
     renderContext.numBvhNodes = m.numBvhNodes;
     renderContext.firstLeafIdx = m.numBvhNodes / 2;
     renderContext.bounds = m.bounds;
+
+    checkCudaErrors(cudaMalloc((void**)&renderContext.materials, numMats * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(renderContext.materials, materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
 
     renderContext.cam = cam;
 
