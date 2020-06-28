@@ -49,7 +49,8 @@ enum OBJ_ID {
 #define NUM_RAYS_EXCEED_MAX_BOUNCE      13
 #define NUM_RAYS_RUSSIAN_KILL           14
 #define NUM_RAYS_NAN                    15
-#define NUM_RAYS_SIZE                   16
+#define NUM_RAYS_MAX_TRAVERSED_NODES    16
+#define NUM_RAYS_SIZE                   17
 #endif
 
 struct RenderContext {
@@ -77,33 +78,38 @@ struct RenderContext {
     material* materials;
 
 #ifdef STATS
-    uint64_t* numRays;
+    uint64_t* stats;
     __device__ void rayStat(int type) const {
-        atomicAdd(numRays + type, 1);
+        atomicAdd(stats + type, 1);
     }
+    __device__ void maxStat(int type, uint64_t value) const {
+        atomicMax(stats + type, value);
+    }
+
     void initStats() {
-        checkCudaErrors(cudaMallocManaged((void**)&numRays, NUM_RAYS_SIZE * sizeof(uint64_t)));
-        memset(numRays, 0, NUM_RAYS_SIZE * sizeof(uint64_t));
+        checkCudaErrors(cudaMallocManaged((void**)&stats, NUM_RAYS_SIZE * sizeof(uint64_t)));
+        memset(stats, 0, NUM_RAYS_SIZE * sizeof(uint64_t));
     }
     void printStats() const {
         std::cerr << "num rays:\n";
-        std::cerr << " primary             : " << std::fixed << numRays[NUM_RAYS_PRIMARY] << std::endl;
-        std::cerr << " primary hit mesh    : " << std::fixed << numRays[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
-        std::cerr << " primary nohit       : " << std::fixed << numRays[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
-        std::cerr << " primary bb nohit    : " << std::fixed << numRays[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
-        std::cerr << " secondary           : " << std::fixed << numRays[NUM_RAYS_SECONDARY] << std::endl;
-        std::cerr << " secondary no hit    : " << std::fixed << numRays[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
-        std::cerr << " secondary bb nohit  : " << std::fixed << numRays[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
-        std::cerr << " secondary mesh      : " << std::fixed << numRays[NUM_RAYS_SECONDARY_MESH] << std::endl;
-        std::cerr << " secondary mesh nohit: " << std::fixed << numRays[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
-        std::cerr << " shadows             : " << std::fixed << numRays[NUM_RAYS_SHADOWS] << std::endl;
-        std::cerr << " shadows nohit       : " << std::fixed << numRays[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
-        std::cerr << " shadows bb nohit    : " << std::fixed << numRays[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
-        std::cerr << " power < 0.01        : " << std::fixed << numRays[NUM_RAYS_LOW_POWER] << std::endl;
-        std::cerr << " exceeded max bounce : " << std::fixed << numRays[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
-        std::cerr << " russian roulette    : " << std::fixed << numRays[NUM_RAYS_RUSSIAN_KILL] << std::endl;
-        if (numRays[NUM_RAYS_NAN] > 0)
-            std::cerr << "*** " << numRays[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
+        std::cerr << " primary             : " << std::fixed << stats[NUM_RAYS_PRIMARY] << std::endl;
+        std::cerr << " primary hit mesh    : " << std::fixed << stats[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
+        std::cerr << " primary nohit       : " << std::fixed << stats[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " primary bb nohit    : " << std::fixed << stats[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
+        std::cerr << " secondary           : " << std::fixed << stats[NUM_RAYS_SECONDARY] << std::endl;
+        std::cerr << " secondary no hit    : " << std::fixed << stats[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
+        std::cerr << " secondary bb nohit  : " << std::fixed << stats[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
+        std::cerr << " secondary mesh      : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH] << std::endl;
+        std::cerr << " secondary mesh nohit: " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
+        std::cerr << " shadows             : " << std::fixed << stats[NUM_RAYS_SHADOWS] << std::endl;
+        std::cerr << " shadows nohit       : " << std::fixed << stats[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " shadows bb nohit    : " << std::fixed << stats[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
+        std::cerr << " power < 0.01        : " << std::fixed << stats[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " exceeded max bounce : " << std::fixed << stats[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
+        std::cerr << " russian roulette    : " << std::fixed << stats[NUM_RAYS_RUSSIAN_KILL] << std::endl;
+        std::cerr << " max travers. nodes  : " << std::fixed << stats[NUM_RAYS_MAX_TRAVERSED_NODES] << std::endl;
+        if (stats[NUM_RAYS_NAN] > 0)
+            std::cerr << "*** " << stats[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
 #else
     __device__ void rayStat(int type) const {}
@@ -119,10 +125,15 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     int idx = 1;
     float closest = FLT_MAX;
     unsigned int bitStack = 0;
-
+#ifdef BVH_COUNT
+    uint64_t traversed = 0;
+#endif
     while (true) {
         if (down) {
             bvh_node node = context.bvh[idx];
+#ifdef BVH_COUNT
+            traversed++;
+#endif
             if (hit_bbox(node.min(), node.max(), r, closest)) {
                 if (idx >= context.firstLeafIdx) { // leaf node
                     int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
@@ -165,6 +176,10 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
         }
     }
 
+#ifdef BVH_COUNT
+    context.maxStat(NUM_RAYS_MAX_TRAVERSED_NODES, traversed);
+    rec.traversed = traversed;
+#endif
     return closest;
 }
 
@@ -209,9 +224,14 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         triangle tri = context.tris[triHit.triId];
         inters.meshID = tri.meshID;
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
+#ifdef BVH_COUNT
+        inters.traversed = triHit.traversed;
+#endif
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
-
+#ifdef BVH_COUNT
+        inters.traversed = triHit.traversed;
+#endif
         //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
         //    inters.objId = PLANE;
         //    inters.normal = context.floor.norm;
@@ -265,6 +285,10 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
 __device__ void color(const RenderContext& context, path& p) {
     p.attenuation = vec3(1.0, 1.0, 1.0);
     p.color = vec3(0, 0, 0);
+#ifdef BVH_COUNT
+    const uint64_t maxTraversed = 1500;
+    const uint64_t targetBounce = 0;
+#endif
 #ifdef STATS
     bool fromMesh = false;
 #endif
@@ -291,7 +315,20 @@ __device__ void color(const RenderContext& context, path& p) {
 
             // constant sky color of (0.5, 0.5, 0.5)
             p.color += p.attenuation * vec3(0.5f, 0.5f, 0.5f);
-
+#ifdef BVH_COUNT
+            if (p.bounce == targetBounce) {
+                float t = fminf(1.0f, ((float)inters.traversed) / maxTraversed);
+                if (t <= 0.5f) {
+                    t *= 2; // [0, .5] -> [0, 1]
+                    p.color = (1 - t) * vec3(0, 0, 1) + t * vec3(0, 1, 0);
+                }
+                else {
+                    // [0.5, 1] -> [0, 1]
+                    t = (t - 0.5f) * 2;
+                    p.color = (1 - t) * vec3(0, 1, 0) + t * vec3(1, 0, 0);
+                }
+            }
+#endif // BVH_COUNT
             return;
         }
 
@@ -313,7 +350,21 @@ __device__ void color(const RenderContext& context, path& p) {
 #endif
 
         inters.inside = p.inside;
-
+#ifdef BVH_COUNT
+        if (p.bounce == targetBounce) {
+            float t = fminf(1.0f, ((float)inters.traversed) / maxTraversed);
+            if (t <= 0.5f) {
+                t *= 2; // [0, .5] -> [0, 1]
+                p.color = (1 - t) * vec3(0, 0, 1) + t * vec3(0, 1, 0);
+            }
+            else {
+                // [0.5, 1] -> [0, 1]
+                t = (t - 0.5f) * 2;
+                p.color = (1 - t) * vec3(0, 1, 0) + t * vec3(1, 0, 0);
+            }
+            return;
+        }
+#endif
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH)
             material_scatter(scatter, inters, p.rayDir, context.materials[inters.meshID], p.rng);
@@ -406,7 +457,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh& m, plane floor, const camera cam, const material* materials, int numMats, vec3 **fb, int nx, int ny, int maxDepth) {
+initRenderer(const mesh& m, plane floor, const camera cam, const material* materials, int numMats, vec3 **fb, int nx, int ny, int maxDepth, int numPrimitivesPerLeaf) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = floor;
@@ -429,7 +480,7 @@ initRenderer(const mesh& m, plane floor, const camera cam, const material* mater
     checkCudaErrors(cudaMemcpy(renderContext.materials, materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
 
     renderContext.cam = cam;
-
+    renderContext.numPrimitivesPerLeaf = numPrimitivesPerLeaf;
     renderContext.initStats();
 }
 

@@ -143,7 +143,7 @@ int main() {
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
-        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 3);
+        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 1, numPrimitivesPerLeaf);
     }
 
     clock_t start, stop;

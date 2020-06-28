@@ -4,6 +4,7 @@
 #include "vec3.h"
 
 //#define PATH_DBG
+//#define BVH_COUNT
 
 typedef unsigned int rand_state;
 
@@ -18,6 +19,9 @@ struct intersection {
     vec3 p;
     vec3 normal; // always faces the ray
     bool inside; // true if current path is inside the model
+#ifdef BVH_COUNT
+    uint64_t traversed = 0;
+#endif
 };
 
 struct scatter_info {
@@ -146,6 +150,9 @@ struct sphere
 struct tri_hit {
     unsigned int triId; // triangle that was intersected
     float u, v;
+#ifdef BVH_COUNT
+    uint64_t traversed;
+#endif
 };
 
 struct camera

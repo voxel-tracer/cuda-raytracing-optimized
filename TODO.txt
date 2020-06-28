@@ -367,11 +367,7 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . DONE color() uses meshID to use the appropriate material (move logic to scatter())
  . DONE load staircase scene and render it using different colors for each mesh
  . DONE set the correct color for all materials that don't require an albedoTexture
-- bug in BVH
- . debug the issue
-  . DONE identify pixel that's causing the issue (413, 642)
-  . print all triangles that intersect that ray (triID and hitID)
-  . compare print of BVH vs non-BVH
+- DONE bug in BVH
 - properly handle texture coordinates
  . load texture coordinates and store them with triangles in BVH
    when texCoords not available just put (0, 0)
