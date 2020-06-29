@@ -224,6 +224,8 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         triangle tri = context.tris[triHit.triId];
         inters.meshID = tri.meshID;
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
+        inters.texCoords[0] = (triHit.u * tri.texCoords[2 * 2 + 0] + triHit.v * tri.texCoords[1 * 2 + 0] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 0]);
+        inters.texCoords[1] = (triHit.u * tri.texCoords[2 * 2 + 1] + triHit.v * tri.texCoords[1 * 2 + 1] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 1]);
 #ifdef BVH_COUNT
         inters.traversed = triHit.traversed;
 #endif

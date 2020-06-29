@@ -19,6 +19,7 @@ struct intersection {
     vec3 p;
     vec3 normal; // always faces the ray
     bool inside; // true if current path is inside the model
+    float texCoords[2];
 #ifdef BVH_COUNT
     uint64_t traversed = 0;
 #endif
@@ -63,12 +64,15 @@ struct bbox {
 
 struct triangle {
     triangle() {}
-    triangle(vec3 v0, vec3 v1, vec3 v2, int mID) {
+    triangle(vec3 v0, vec3 v1, vec3 v2, float tc[6], unsigned char mID) {
         v[0] = v0;
         v[1] = v1;
         v[2] = v2;
         meshID = mID;
         update();
+
+        for (auto i = 0; i < 6; i++)
+            texCoords[i] = tc[i];
     }
 
     void update() {
@@ -77,6 +81,7 @@ struct triangle {
 
     vec3 v[3];
     vec3 center;
+    float texCoords[6];
     unsigned char meshID;
 };
 

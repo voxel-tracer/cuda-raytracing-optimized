@@ -66,7 +66,7 @@ uint32_t LinearToSRGB(float x)
 bool loadBVH(const char* input, mesh& m, int &numPrimitivesPerLeaf) {
     std::fstream in(input, std::ios::in | std::ios::binary);
 
-    const char* HEADER = "BVH_00.02";
+    const char* HEADER = "BVH_00.03";
     char* header = new char[sizeof(HEADER)];
     in.read(header, sizeof(HEADER));
     if (!strcmp(HEADER, header))
@@ -143,7 +143,7 @@ int main() {
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         // setup floor
-        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 1, numPrimitivesPerLeaf);
+        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 3, numPrimitivesPerLeaf);
     }
 
     clock_t start, stop;
