@@ -378,9 +378,19 @@ __device__ void color(const RenderContext& context, path& p) {
             vec3 albedo;
             if (mat.texId != -1) {
                 int texId = mat.texId;
-                const int tx = (context.tex_width[texId] - 1) * inters.texCoords[0];
-                const int ty = (context.tex_height[texId] - 1) * inters.texCoords[1];
-                const int tIdx = ty * context.tex_width[texId] + tx;
+                int width = context.tex_width[texId];
+                int height = context.tex_height[texId];
+                float tu = inters.texCoords[0];
+                if (tu > 1.0f) tu = tu - ((int)tu);
+                if (tu < 0.0f) tu = 1.0f + (tu - ((int)tu));
+                float tv = inters.texCoords[1];
+                if (tv > 1.0f) tv = tv - ((int)tv);
+                if (tv < 0.0f) tv = 1.0f + (tv - ((int)tv));
+                const int tx = (width - 1) * tu;
+                const int ty = (height - 1) * tv;
+                //if (tx < 0 || tx >= width || ty < 0 || ty >= height)
+                //    printf("(%f, %f):(%f, %f):(%d, %d):(%d,%d)\n", inters.texCoords[0], inters.texCoords[1], tu, tv, tx, ty, width, height);
+                const int tIdx = ty* width + tx;
                 albedo = vec3(
                     context.tex_data[texId][tIdx * 3 + 0],
                     context.tex_data[texId][tIdx * 3 + 1],
@@ -388,7 +398,7 @@ __device__ void color(const RenderContext& context, path& p) {
             } else {
                 albedo = mat.color;
             }
-            diffuse_bsdf(scatter, inters, albedo, p.rng);
+            material_scatter(scatter, inters, p.rayDir, context.materials[inters.meshID], albedo, p.rng);
         }
         else 
             floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);

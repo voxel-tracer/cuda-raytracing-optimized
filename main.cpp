@@ -69,8 +69,10 @@ bool loadBVH(const char* input, mesh& m, int &numPrimitivesPerLeaf) {
     const char* HEADER = "BVH_00.03";
     char* header = new char[sizeof(HEADER)];
     in.read(header, sizeof(HEADER));
-    if (!strcmp(HEADER, header))
+    if (!strcmp(HEADER, header)) {
+        std::cerr << "invalid header " << header << std::endl;
         return false;
+    }
 
     in.read((char*)&m.numTris, sizeof(int));
     m.tris = new triangle[m.numTris];
@@ -86,12 +88,29 @@ bool loadBVH(const char* input, mesh& m, int &numPrimitivesPerLeaf) {
     in.read((char*)&numPrimitivesPerLeaf, sizeof(int));
 }
 
+bool loadTexture(const std::string filename, stexture& tex) {
+    int width, height, nrChannels;
+    // read image as RGB regardless of file format
+    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrChannels, 3);
+    if (!data)
+        return false;
+
+    float* fdata = new float[width * height * 3];
+    for (auto i = 0; i < width * height * 3; i++) {
+       fdata[i] = data[i] / 255.0f;
+    }
+    tex = stexture(fdata, width, height);
+
+    stbi_image_free(data);
+    return true;
+}
+
 int main() {
     bool perf = false;
     bool fast = false;
     int nx = (!perf && !fast) ? 640 : 320;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 1 : 128) : 4;
+    int ns = !perf ? (fast ? 16 : 128) : 4;
     int tx = 8;
     int ty = 8;
 
@@ -99,29 +118,45 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
+    stexture textures[9];
+    bool success = true;
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodFloor.png", textures[0]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Wallpaper.png", textures[1]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Woodpanel.png", textures[2]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting1.png", textures[3]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting2.png", textures[4]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting3.png", textures[5]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodChair.png", textures[6]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Fabric.png", textures[7]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\BrushedAluminium.png", textures[8]);
+    if (!success) {
+        std::cerr << "Failed to load textures" << std::endl;
+        return -1;
+    }
+
     material materials[20] = {
-        { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0 },              // Black
-        { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01 },            // Brass
-        { material_type::METAL, vec3(0.5, 0.5, 0.5), 0 },                   // BrushedAluminium (metal with texture)
-        { material_type::DIFFUSE, vec3(1, 1, 1), 0 },                       // Candles
-        { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0 }, // ChairSeat
-        { material_type::GLASS, vec3(1, 1, 1), 1.45 },                      // Glass
-        { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05 },              // Gold
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Lampshade
-        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0 },  // MagnoliaPaint
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting1
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting2
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // Painting3
-        { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1 },                 // StainlessSteel
-        { material_type::DIFFUSE, vec3(0.15, 0.5, 0.5), 0 },                 // wallpaper
-        { material_type::DIFFUSE, vec3(0.1578596, 0.578596, 0.1578596), 0 },  // whitePaint
-        { material_type::DIFFUSE, vec3(1, 1, 1), 0 },                       // WhitePlastic
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // WoodChair
-        { material_type::DIFFUSE, vec3(0.5, 0.15, 0.15), 0 },                 // woodFloor
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // WoodLamp
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0 },                 // woodstairs
+        { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0,-1 },              // Black
+        { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01,-1 },            // Brass
+        { material_type::METAL, vec3(0.5, 0.5, 0.5), 0, 8 },                   // BrushedAluminium
+        { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // Candles
+        { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0,-1 }, // ChairSeat
+        { material_type::GLASS, vec3(1, 1, 1), 1.45,-1 },                      // Glass
+        { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05,-1 },              // Gold
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 7 },                 // Lampshade
+        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 },  // MagnoliaPaint
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 3 },                 // Painting1
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 4 },                 // Painting2
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 5 },                 // Painting3
+        { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1,-1 },                 // StainlessSteel
+        { material_type::DIFFUSE, vec3(0.15, 0.5, 0.5), 0, 1 },                 // wallpaper
+        { material_type::DIFFUSE, vec3(0.1578596, 0.578596, 0.1578596), 0,-1 },  // whitePaint
+        { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // WhitePlastic
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 6 },                 // WoodChair
+        { material_type::DIFFUSE, vec3(0.5, 0.15, 0.15), 0, 0 },                 // woodFloor
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 6 },                 // WoodLamp
+        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 2 },                 // woodstairs
     };
-    scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20 };
+    scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
 
     scene sc = staircase;
     // init
@@ -142,8 +177,8 @@ int main() {
 
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
-        // setup floor
-        initRenderer(m, floor, cam, sc.mats, sc.numMats, &fb, nx, ny, 3, numPrimitivesPerLeaf);
+        kernel_scene kscene = { m, floor, sc.materials, sc.numMaterials, sc.textures, sc.numTextures };
+        initRenderer(kscene, cam, &fb, nx, ny, 3, numPrimitivesPerLeaf);
     }
 
     clock_t start, stop;

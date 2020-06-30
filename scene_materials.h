@@ -10,13 +10,13 @@ __device__ vec3 hexColor(int hexValue) {
     return vec3(r, g, b) / 255.0;
 }
 
-__device__ void material_scatter(scatter_info& out, const intersection& i, const vec3& wo, const material& mat, rand_state& rng) {
+__device__ void material_scatter(scatter_info& out, const intersection& i, const vec3& wo, const material& mat, const vec3& color, rand_state& rng) {
     if (mat.type == material_type::DIFFUSE)
-        diffuse_bsdf(out, i, mat.color, rng);
+        diffuse_bsdf(out, i, color, rng);
     else if (mat.type == material_type::METAL)
-        glossy_bsdf(out, i, wo, mat.color, mat.param, rng);
+        glossy_bsdf(out, i, wo, color, mat.param, rng);
     else // GLASS
-        dielectric_bsdf(out, i, wo, mat.param, mat.color, 0.0f, vec3(0, 0, 0), rng);
+        dielectric_bsdf(out, i, wo, mat.param, color, 0.0f, vec3(0, 0, 0), rng);
 }
 
 __device__ void floor_coat_scatter(scatter_info& out, const intersection& i, const vec3& wo, rand_state& rng) {
