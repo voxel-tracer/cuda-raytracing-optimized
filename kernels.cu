@@ -74,7 +74,7 @@ struct RenderContext {
     int maxDepth;
     camera cam;
 
-    sphere light = sphere(vec3(52.514355, 715.686951, -272.620972), 100);
+    sphere light = sphere(vec3(52.514355, 715.686951, -272.620972), 50);
     vec3 lightColor = vec3(1, 1, 1) * 80;
 
     material* materials;
@@ -481,11 +481,11 @@ __global__ void render(const RenderContext context) {
 #endif
     }
     // color is specific to the pixel being traced, 
-    col /= float(context.ns);
-    col[0] = sqrt(col[0]);
-    col[1] = sqrt(col[1]);
-    col[2] = sqrt(col[2]);
-    context.fb[p.pixelId] = col;
+    //col /= float(context.ns);
+    //col[0] = sqrt(col[0]);
+    //col[1] = sqrt(col[1]);
+    //col[2] = sqrt(col[2]);
+    context.fb[p.pixelId] = col / float(context.ns);
 }
 
 extern "C" void

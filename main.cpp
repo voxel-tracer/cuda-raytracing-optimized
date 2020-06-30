@@ -137,24 +137,24 @@ int main() {
     material materials[20] = {
         { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0,-1 },              // Black
         { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01,-1 },            // Brass
-        { material_type::METAL, vec3(0.5, 0.5, 0.5), 0, 8 },                   // BrushedAluminium
+        { material_type::METAL, vec3(), 0, 8 },                   // BrushedAluminium
         { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // Candles
         { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0,-1 }, // ChairSeat
         { material_type::GLASS, vec3(1, 1, 1), 1.45,-1 },                      // Glass
         { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05,-1 },              // Gold
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 7 },                 // Lampshade
+        { material_type::DIFFUSE, vec3(), 0, 7 },                 // Lampshade
         { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 },  // MagnoliaPaint
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 3 },                 // Painting1
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 4 },                 // Painting2
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 5 },                 // Painting3
+        { material_type::DIFFUSE, vec3(), 0, 3 },                 // Painting1
+        { material_type::DIFFUSE, vec3(), 0, 4 },                 // Painting2
+        { material_type::DIFFUSE, vec3(), 0, 5 },                 // Painting3
         { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1,-1 },                 // StainlessSteel
-        { material_type::DIFFUSE, vec3(0.15, 0.5, 0.5), 0, 1 },                 // wallpaper
-        { material_type::DIFFUSE, vec3(0.1578596, 0.578596, 0.1578596), 0,-1 },  // whitePaint
+        { material_type::DIFFUSE, vec3(), 0, 1 },                 // wallpaper
+        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.1578596), 0,-1 },  // whitePaint
         { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // WhitePlastic
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 6 },                 // WoodChair
-        { material_type::DIFFUSE, vec3(0.5, 0.15, 0.15), 0, 0 },                 // woodFloor
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 6 },                 // WoodLamp
-        { material_type::DIFFUSE, vec3(0.5, 0.5, 0.5), 0, 2 },                 // woodstairs
+        { material_type::DIFFUSE, vec3(), 0, 6 },                 // WoodChair
+        { material_type::DIFFUSE, vec3(), 0, 0 },                 // woodFloor
+        { material_type::DIFFUSE, vec3(), 0, 6 },                 // WoodLamp
+        { material_type::DIFFUSE, vec3(), 0, 2 },                 // woodstairs
     };
     scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
 
