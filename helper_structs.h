@@ -124,6 +124,16 @@ struct material {
     material_type type;
     vec3 color;
     float param; // fuzz
+    int texId;
+};
+
+struct stexture {
+    float* data;
+    int width;
+    int height;
+
+    stexture() {}
+    stexture(float* data, int width, int height) : data(data), width(width), height(height) {}
 };
 
 struct scene {
@@ -131,8 +141,10 @@ struct scene {
     mat3x3 mat;
     float scale;
     vec3 camPos;
-    material* mats;
-    int numMats;
+    material* materials;
+    int numMaterials;
+    stexture* textures;
+    int numTextures;
 };
 
 struct plane {

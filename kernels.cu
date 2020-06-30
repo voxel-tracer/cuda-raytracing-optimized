@@ -6,6 +6,8 @@
 #include "material.h"
 #include "scene_materials.h"
 
+#include "kernels.h"
+
 #define STATS
 #define RUSSIAN_ROULETTE
 #define BVH
@@ -57,9 +59,9 @@ struct RenderContext {
     vec3* fb;
 
     triangle* tris;
-    uint32_t numTris;
+    //uint32_t numTris;
     bvh_node* bvh;
-    uint32_t numBvhNodes;
+    //uint32_t numBvhNodes;
     uint32_t firstLeafIdx;
     uint32_t numPrimitivesPerLeaf = 5; //TODO load this from bin file
     bbox bounds;
@@ -76,6 +78,9 @@ struct RenderContext {
     vec3 lightColor = vec3(1, 1, 1) * 80;
 
     material* materials;
+    float** tex_data;
+    int* tex_width;
+    int* tex_height;
 
 #ifdef STATS
     uint64_t* stats;
@@ -224,8 +229,8 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         triangle tri = context.tris[triHit.triId];
         inters.meshID = tri.meshID;
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
-        inters.texCoords[0] = (triHit.u * tri.texCoords[2 * 2 + 0] + triHit.v * tri.texCoords[1 * 2 + 0] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 0]);
-        inters.texCoords[1] = (triHit.u * tri.texCoords[2 * 2 + 1] + triHit.v * tri.texCoords[1 * 2 + 1] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 1]);
+        inters.texCoords[0] = (triHit.u * tri.texCoords[1 * 2 + 0] + triHit.v * tri.texCoords[2 * 2 + 0] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 0]);
+        inters.texCoords[1] = (triHit.u * tri.texCoords[1 * 2 + 1] + triHit.v * tri.texCoords[2 * 2 + 1] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 1]);
 #ifdef BVH_COUNT
         inters.traversed = triHit.traversed;
 #endif
@@ -368,8 +373,23 @@ __device__ void color(const RenderContext& context, path& p) {
         }
 #endif
         scatter_info scatter(inters);
-        if (inters.objId == TRIMESH)
-            material_scatter(scatter, inters, p.rayDir, context.materials[inters.meshID], p.rng);
+        if (inters.objId == TRIMESH) {
+            const material& mat = context.materials[inters.meshID];
+            vec3 albedo;
+            if (mat.texId != -1) {
+                int texId = mat.texId;
+                const int tx = (context.tex_width[texId] - 1) * inters.texCoords[0];
+                const int ty = (context.tex_height[texId] - 1) * inters.texCoords[1];
+                const int tIdx = ty * context.tex_width[texId] + tx;
+                albedo = vec3(
+                    context.tex_data[texId][tIdx * 3 + 0],
+                    context.tex_data[texId][tIdx * 3 + 1],
+                    context.tex_data[texId][tIdx * 3 + 2]);
+            } else {
+                albedo = mat.color;
+            }
+            diffuse_bsdf(scatter, inters, albedo, p.rng);
+        }
         else 
             floor_diffuse_scatter(scatter, inters, p.rayDir, p.rng);
 
@@ -459,27 +479,52 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const mesh& m, plane floor, const camera cam, const material* materials, int numMats, vec3 **fb, int nx, int ny, int maxDepth, int numPrimitivesPerLeaf) {
+initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny, int maxDepth, int numPrimitivesPerLeaf) {
     renderContext.nx = nx;
     renderContext.ny = ny;
-    renderContext.floor = floor;
+    renderContext.floor = sc.floor;
     renderContext.maxDepth = maxDepth;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
-    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, m.numTris * sizeof(triangle)));
-    checkCudaErrors(cudaMemcpy(renderContext.tris, m.tris, m.numTris * sizeof(triangle), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, m.numBvhNodes * sizeof(bvh_node)));
-    checkCudaErrors(cudaMemcpy(renderContext.bvh, m.bvh, m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
-    renderContext.numTris = m.numTris;
-    renderContext.numBvhNodes = m.numBvhNodes;
-    renderContext.firstLeafIdx = m.numBvhNodes / 2;
-    renderContext.bounds = m.bounds;
+    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m.numTris * sizeof(triangle)));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, sc.m.tris, sc.m.numTris * sizeof(triangle), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, sc.m.numBvhNodes * sizeof(bvh_node)));
+    checkCudaErrors(cudaMemcpy(renderContext.bvh, sc.m.bvh, sc.m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+    renderContext.firstLeafIdx = sc.m.numBvhNodes / 2;
+    renderContext.bounds = sc.m.bounds;
 
-    checkCudaErrors(cudaMalloc((void**)&renderContext.materials, numMats * sizeof(material)));
-    checkCudaErrors(cudaMemcpy(renderContext.materials, materials, numMats * sizeof(material), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.materials, sc.numMaterials * sizeof(material)));
+    checkCudaErrors(cudaMemcpy(renderContext.materials, sc.materials, sc.numMaterials * sizeof(material), cudaMemcpyHostToDevice));
+
+    if (sc.numTextures > 0) {
+        int* tex_width = new int[sc.numTextures];
+        int* tex_height = new int[sc.numTextures];
+        float** tex_data = new float* [sc.numTextures];
+
+        for (auto i = 0; i < sc.numTextures; i++) {
+            const stexture& tex = sc.textures[i];
+            tex_width[i] = tex.width;
+            tex_height[i] = tex.height;
+            checkCudaErrors(cudaMalloc((void**)&tex_data[i], tex.width * tex.height * 3 * sizeof(float)));
+            checkCudaErrors(cudaMemcpy(tex_data[i], tex.data, tex.width * tex.height * 3 * sizeof(float), cudaMemcpyHostToDevice));
+        }
+        // copy tex_width to device
+        checkCudaErrors(cudaMalloc((void**)&renderContext.tex_width, sc.numTextures * sizeof(int)));
+        checkCudaErrors(cudaMemcpy(renderContext.tex_width, tex_width, sc.numTextures * sizeof(int), cudaMemcpyHostToDevice));
+        // copy tex_height to device
+        checkCudaErrors(cudaMalloc((void**)&renderContext.tex_height, sc.numTextures * sizeof(int)));
+        checkCudaErrors(cudaMemcpy(renderContext.tex_height, tex_height, sc.numTextures * sizeof(int), cudaMemcpyHostToDevice));
+        // copy tex_data to device
+        checkCudaErrors(cudaMalloc((void**)&renderContext.tex_data, sc.numTextures * sizeof(float*)));
+        checkCudaErrors(cudaMemcpy(renderContext.tex_data, tex_data, sc.numTextures * sizeof(float*), cudaMemcpyHostToDevice));
+
+        delete[] tex_width;
+        delete[] tex_height;
+        delete[] tex_data;
+    }
 
     renderContext.cam = cam;
     renderContext.numPrimitivesPerLeaf = numPrimitivesPerLeaf;
@@ -504,6 +549,7 @@ extern "C" void
 cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(renderContext.fb));
+    checkCudaErrors(cudaFree(renderContext.materials));
 
     cudaDeviceReset();
 }
