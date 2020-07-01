@@ -110,13 +110,15 @@ int main() {
     bool fast = false;
     int nx = (!perf && !fast) ? 640 : 320;
     int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 16 : 128) : 4;
+    int ns = !perf ? (fast ? 64 : 1024) : 4;
     int tx = 8;
     int ty = 8;
 
     std::cerr.imbue(std::locale(""));
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
+
+    stbi_set_flip_vertically_on_load(true);
 
     stexture textures[9];
     bool success = true;
@@ -149,7 +151,7 @@ int main() {
         { material_type::DIFFUSE, vec3(), 0, 5 },                 // Painting3
         { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1,-1 },                 // StainlessSteel
         { material_type::DIFFUSE, vec3(), 0, 1 },                 // wallpaper
-        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.1578596), 0,-1 },  // whitePaint
+        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 },  // whitePaint
         { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // WhitePlastic
         { material_type::DIFFUSE, vec3(), 0, 6 },                 // WoodChair
         { material_type::DIFFUSE, vec3(), 0, 0 },                 // woodFloor
