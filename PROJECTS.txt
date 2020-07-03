@@ -14,8 +14,10 @@ ALL PROJECTS
  RENDER SAN MIGUEL SCENE
  -----------------------
 - has a lot of textures and may require sorting the rays
+- has more complex materials, e.g. normal maps
 - can be a good fit for an Opengl tool that allows editing the materials and render settings
   to make it realistic
+- makes sense to optimize the most of my renderer for the staircase scene before moving to this scene
 
 -------------------------------------------------------------------------------
  STATUES RENDERING
@@ -32,19 +34,7 @@ ALL PROJECTS
 -------------------------------------------------------------------------------
  ANNO WII PICO8
  --------------
-- building toolbar
- . draw a few colored sprites at the top line of the map
- . when mouse pressed, check if its on the toolbar
-   if it is select current sprite using the mouse position
-   if its not, draw the current sprite on the map
-- buildings have different properties (width, height, sprite)
- . when you select the building its properties are saved in a global variable
- . when you draw it those properties are used to draw the right number of cells with the correct sprite
- . for now the cursor doesn't change
-- build cursor reflects the size of the building
- . draw a rectangle instead of using map sprites
- . but do not care about the color of the sprite
-
-- draw road lines
-
+- ideal goal is to get the whole game running in PICO8
+- this will provide us with a basis we can use to implement the game in GameMakerStudio
+- this will give us visibility and may help us build a fan base that will fund the game
 -------------------------------------------------------------------------------

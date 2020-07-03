@@ -368,24 +368,26 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . DONE load staircase scene and render it using different colors for each mesh
  . DONE set the correct color for all materials that don't require an albedoTexture
 - DONE bug in BVH
-- properly handle texture coordinates
+- DONE display number of traversed nodes per sample as a heat color
+ . DONE for each sample compute number of traversed nodes
+ . DONE find max for all samples and use it as a basis for interpolation		1560
+ . convert number of traversed nodes per sample to color (0, 0, 1) -> (0, 1, 0) -> (1, 0, 0)
+- DONE properly handle texture coordinates
  . load texture coordinates and store them with triangles in BVH
    when texCoords not available just put (0, 0)
  . hitMesh() interpolates proper texCoords (tu, tv) using triangle barycentric coordinates
  . add texture-dbg material that blends 4 colors according to (tu, tv)
  . load casual-effects textured cube and confirm it looks as expected
-- add support for albedo textures
- . struct Texture { 
+- DONE add support for albedo textures
+ . DONE struct Texture { 
 	int width, int height; 
 	float *data;
    }
- . initKernel() accepts a Texture[]
+ . DONE initKernel() accepts a Texture[]
    if non empty, create corresponding device textures and stores Texture[] in RenderContext
  . cubeMaterial() uses its default.png texture as albedo texture
  . add proper materials for the staircase scene (hardcode them)
  . see if we need bilinear filtering for the textures and interpolated normals 
-
-- support interpolated normals using vertex normals loaded from .obj (when available)
 
  NOTES
  -----
@@ -395,8 +397,11 @@ PHASE II.2 LOAD AND RENDER STAIRCASE .OBJ SCENE
  . bunny: has texture coords, vertex normals
  . dragon: has vertex normals
  . cube: has texture coords, vertex normals, and a default texture
+ . staircase: has texture coords, vertex normals
 - we may want to store textures as uint32 colors to save space
-  we can even use CUDA texture to benefit from bilinear filtering if needed
+- we should use CUDA texture to benefit from faster memory access and bilinear filtering if needed
+- support interpolated normals using vertex normals loaded from .obj (when available)
+- CUDA texture access works best when all lanes in a warp access the same texture object
 ----------------------------------------------------------------------------------------------------------
 PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
 ----------------------------------------------------------------------------------------------------------
@@ -407,12 +412,17 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  
  TASKS
  -----
-- collect performance numbers for various materials using the default render settings of the mega-kernel
-  ignore the setting changes only relevant to the wavefront renderer
+- measue rendering time for 640x800x1024spp and 64 max depth with russian roulette
+- measue rendering time after disabling various features:
+ . shadow rays
+ . textures
+ . ...
+ note: it may not matter a lot for now if thread divergence is the biggest bottleneck
 - DONE go through my optimization notes and identify what kind of stats I should track to
   identify what to optimize next
 - go through all the notes in this document and identify optimizations that apply to the mega-kernel
  . truncate low throughput paths (also rename path.attenuation to .throughput)
+   generally not that useful except with subsurface scattering, especially if russian roulette is used
 - we have different types of rays: primary, secondary-bounceX, shadows
   measure the cost of each type. This will help us identify specific areas to optimize
   measure warp_execution_efficiency/warp_non-red_execution_efficiency for each type

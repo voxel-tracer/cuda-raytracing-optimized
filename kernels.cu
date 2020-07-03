@@ -12,6 +12,7 @@
 #define RUSSIAN_ROULETTE
 #define BVH
 #define SHADOW
+#define TEXTURES
 
 #define EPSILON 0.01f
 
@@ -79,9 +80,11 @@ struct RenderContext {
     vec3 lightColor = vec3(1, 1, 1) * 80;
 
     material* materials;
+#ifdef TEXTURES
     float** tex_data;
     int* tex_width;
     int* tex_height;
+#endif
 
 #ifdef STATS
     uint64_t* stats;
@@ -351,10 +354,14 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef PATH_DBG
             if (p.dbg) printf("bounce %d: HIT LIGHT\n", p.bounce);
 #endif
-//#ifndef SHADOW
             // ray hit the light, compute its contribution and add it to the path's color
+#ifdef SHADOW
+            // we should uncomment the 2 lines below, but its causing too much noise
+            //if (p.specular) // only account for light if specular ray
+            //    p.color += p.attenuation * context.lightColor;
+#else
             p.color += p.attenuation * context.lightColor;
-//#endif
+#endif
             return;
         }
 #ifdef PATH_DBG
@@ -380,6 +387,7 @@ __device__ void color(const RenderContext& context, path& p) {
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH) {
             const material& mat = context.materials[inters.meshID];
+#ifdef TEXTURES
             vec3 albedo;
             if (mat.texId != -1) {
                 int texId = mat.texId;
@@ -393,14 +401,18 @@ __device__ void color(const RenderContext& context, path& p) {
                 if (tv < 0.0f) tv = 1.0f + (tv - ((int)tv));
                 const int tx = (width - 1) * tu;
                 const int ty = (height - 1) * tv;
-                const int tIdx = ty* width + tx;
+                const int tIdx = ty * width + tx;
                 albedo = vec3(
                     context.tex_data[texId][tIdx * 3 + 0],
                     context.tex_data[texId][tIdx * 3 + 1],
                     context.tex_data[texId][tIdx * 3 + 2]);
-            } else {
+            }
+            else {
                 albedo = mat.color;
             }
+#else
+            vec3 albedo(0.5f, 0.5f, 0.5f);
+#endif
             material_scatter(scatter, inters, p.rayDir, context.materials[inters.meshID], albedo, p.rng);
         }
         else 
@@ -409,7 +421,7 @@ __device__ void color(const RenderContext& context, path& p) {
         p.origin += scatter.t * p.rayDir;
         p.rayDir = scatter.wi;
         p.attenuation *= scatter.throughput;
-        p.specular = scatter.specular;
+        p.specular = p.specular && scatter.specular;
         p.inside = scatter.refracted ? !p.inside : p.inside;
 #ifdef SHADOW
         // trace shadow ray for diffuse rays
@@ -511,7 +523,7 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
 
     checkCudaErrors(cudaMalloc((void**)&renderContext.materials, sc.numMaterials * sizeof(material)));
     checkCudaErrors(cudaMemcpy(renderContext.materials, sc.materials, sc.numMaterials * sizeof(material), cudaMemcpyHostToDevice));
-
+#ifdef TEXTURES
     if (sc.numTextures > 0) {
         int* tex_width = new int[sc.numTextures];
         int* tex_height = new int[sc.numTextures];
@@ -538,7 +550,7 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
         delete[] tex_height;
         delete[] tex_data;
     }
-
+#endif
     renderContext.cam = cam;
     renderContext.numPrimitivesPerLeaf = numPrimitivesPerLeaf;
     renderContext.initStats();
