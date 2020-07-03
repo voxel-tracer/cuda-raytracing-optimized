@@ -11,6 +11,7 @@
 #define STATS
 #define RUSSIAN_ROULETTE
 #define BVH
+#define SHADOW
 
 #define EPSILON 0.01f
 
@@ -260,6 +261,7 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
     return false;
 }
 
+#ifdef SHADOW
 __device__ bool generateShadowRay(const RenderContext& context, path& p, const intersection &inters) {
     // create a random direction towards the light
     // coord system for sampling
@@ -288,6 +290,7 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
 
     return true;
 }
+#endif
 
 __device__ void color(const RenderContext& context, path& p) {
     p.attenuation = vec3(1.0, 1.0, 1.0);
@@ -348,8 +351,10 @@ __device__ void color(const RenderContext& context, path& p) {
 #ifdef PATH_DBG
             if (p.dbg) printf("bounce %d: HIT LIGHT\n", p.bounce);
 #endif
+//#ifndef SHADOW
             // ray hit the light, compute its contribution and add it to the path's color
             p.color += p.attenuation * context.lightColor;
+//#endif
             return;
         }
 #ifdef PATH_DBG
@@ -388,8 +393,6 @@ __device__ void color(const RenderContext& context, path& p) {
                 if (tv < 0.0f) tv = 1.0f + (tv - ((int)tv));
                 const int tx = (width - 1) * tu;
                 const int ty = (height - 1) * tv;
-                //if (tx < 0 || tx >= width || ty < 0 || ty >= height)
-                //    printf("(%f, %f):(%f, %f):(%d, %d):(%d,%d)\n", inters.texCoords[0], inters.texCoords[1], tu, tv, tx, ty, width, height);
                 const int tIdx = ty* width + tx;
                 albedo = vec3(
                     context.tex_data[texId][tIdx * 3 + 0],
@@ -408,7 +411,7 @@ __device__ void color(const RenderContext& context, path& p) {
         p.attenuation *= scatter.throughput;
         p.specular = scatter.specular;
         p.inside = scatter.refracted ? !p.inside : p.inside;
-
+#ifdef SHADOW
         // trace shadow ray for diffuse rays
         if (!p.specular && generateShadowRay(context, p, inters)) {
 #ifdef PATH_DBG
@@ -428,7 +431,7 @@ __device__ void color(const RenderContext& context, path& p) {
                 p.color += p.lightContribution;
             }
         }
-
+#endif
 #ifdef RUSSIAN_ROULETTE
         // russian roulette
         if (p.bounce > 3) {
