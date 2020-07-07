@@ -409,28 +409,37 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  ----
 - investigate what are the performance bottlenecks
 - optimize the code as much as possible while keeping the mega-kernel model
- 
+- 3938s (1h5m38s)
+
  TASKS
  -----
-- measue rendering time for 640x800x1024spp and 64 max depth with russian roulette
-- measue rendering time after disabling various features:
+- DONE measue rendering time for 640x800x1024spp and 64 max depth with russian roulette
+- DONE measue rendering time after disabling various features:
  . shadow rays
  . textures
  . ...
- note: it may not matter a lot for now if thread divergence is the biggest bottleneck
 - DONE go through my optimization notes and identify what kind of stats I should track to
   identify what to optimize next
+- DONE we have different types of rays: primary, secondary-bounceX, shadows
+  measure the cost of each type. This will help us identify specific areas to optimize
+- Investigate why secondary rays are expensive
+ . print kernel code and identify min info we need to save for each path so we can run next bounce separately
+ . write special kernels (create separate project for this):
+  . primary kernel: generates primary rays, handles them and save next bounce to memory
+  . secondary kernel: loads secondary rays from memory, handles them and saves next bounce to memory  
+  . save rays to disk
+  . main project loads specific file from disk and runs it (only handle secondary rays for now)
+ . run tool on various depths and confirm numbers match what I collected before
+  . also collect divergence as reported by nvprof
+ . go through the kernel code and identify potential divergence points
+ . measure divergence at those points then analyse the results
+- Read ray sorting papers and identify strategies worth exploring in my kernel
+ . for each strategy, first implement adhoc and test its effect by running a single bounce
+   if its effective enough, think about how to implement it in the original kernel
+
 - go through all the notes in this document and identify optimizations that apply to the mega-kernel
  . truncate low throughput paths (also rename path.attenuation to .throughput)
    generally not that useful except with subsurface scattering, especially if russian roulette is used
-- we have different types of rays: primary, secondary-bounceX, shadows
-  measure the cost of each type. This will help us identify specific areas to optimize
-  measure warp_execution_efficiency/warp_non-red_execution_efficiency for each type
-- tracking thread divergence at specific spots in the kernel will help me understand its behavior
-  look for the divergence metric I implemented for voxels
-- find a way to export and test the performance of each type of rays separately and experiment
-  with strategies to sort highly divergent ray types
-
 - [optional] rewrite mega-kernel to render a single sample per pixel
   I could split rendering in iterations
   I could use multiple threads per pixel

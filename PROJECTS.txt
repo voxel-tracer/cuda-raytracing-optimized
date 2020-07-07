@@ -1,14 +1,18 @@
 ALL PROJECTS
 ------------
 
- RENDER STAIRCASE SCENE
+ RENDER STAIRCASE SCENE [DONE]
  ----------------------
 - load staircase scene, its made up of multiple obj models that rely on simple materials along with albdeo textures
 - can provide really good visual result and the large number of triangles will be a good motivation to work on optimazing the kernels
 - doesn't require any advanced material or editor features
-- there are many more scenes are available here, including the San Miguel scene:
-	http://casual-effects.com/data/index.html
-	https://benedikt-bitterli.me/resources/
+
+ OPTIMIZE RENDERING OF STAIRCASE SCENE
+ -------------------------------------
+- currently takes +1h, need to get it < 10mn
+- requires a lot of investigation and optimizations
+- once I achieve this, buy an RTX machine and port my kernel to Lighthouse 2
+- the performance of my kernel will be so good that I will get a $600K job offer from Nvidia
 
 -------------------------------------------------------------------------------
  RENDER SAN MIGUEL SCENE

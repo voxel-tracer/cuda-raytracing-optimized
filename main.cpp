@@ -107,10 +107,11 @@ bool loadTexture(const std::string filename, stexture& tex) {
 
 int main() {
     bool perf = false;
-    bool fast = false;
-    int nx = (!perf && !fast) ? 640 : 320;
-    int ny = (!perf && !fast) ? 800 : 400;
-    int ns = !perf ? (fast ? 64 : 1024) : 4;
+    bool fast = true;
+    int nx = (!perf && !fast) ? 640 : (!perf ? 320 : 160);
+    int ny = (!perf && !fast) ? 800 : (!perf ? 400 : 200);
+    int ns = (!perf && !fast) ? 1024 : (!perf ? 64 : 4); //!perf ? (fast ? 64 : 1024) : 4;
+    int maxDepth = 8;
     int tx = 8;
     int ty = 8;
 
@@ -180,7 +181,7 @@ int main() {
         camera cam = setup_camera(nx, ny, m, sc.camPos);
 
         kernel_scene kscene = { m, floor, sc.materials, sc.numMaterials, sc.textures, sc.numTextures };
-        initRenderer(kscene, cam, &fb, nx, ny, 3, numPrimitivesPerLeaf);
+        initRenderer(kscene, cam, &fb, nx, ny, maxDepth, numPrimitivesPerLeaf);
     }
 
     clock_t start, stop;
