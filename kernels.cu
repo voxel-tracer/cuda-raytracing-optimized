@@ -394,11 +394,9 @@ __device__ void color(const RenderContext& context, path& p) {
                 int width = context.tex_width[texId];
                 int height = context.tex_height[texId];
                 float tu = inters.texCoords[0];
-                if (tu > 1.0f) tu = tu - ((int)tu);
-                if (tu < 0.0f) tu = 1.0f + (tu - ((int)tu));
+                tu = tu - floorf(tu);
                 float tv = inters.texCoords[1];
-                if (tv > 1.0f) tv = tv - ((int)tv);
-                if (tv < 0.0f) tv = 1.0f + (tv - ((int)tv));
+                tv = tv - floorf(tv);
                 const int tx = (width - 1) * tu;
                 const int ty = (height - 1) * tv;
                 const int tIdx = ty * width + tx;
