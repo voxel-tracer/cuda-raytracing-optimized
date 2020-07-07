@@ -1,4 +1,6 @@
 #include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+
 #include "rnd.h"
 #include "vec3.h"
 #include "camera.h"

@@ -423,7 +423,13 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
 - DONE we have different types of rays: primary, secondary-bounceX, shadows
   measure the cost of each type. This will help us identify specific areas to optimize
 - Investigate why secondary rays are expensive
- . print kernel code and identify min info we need to save for each path so we can run next bounce separately
+ . DONE print kernel code and identify min info we need to save for each path so we can run next bounce separately
+  . origin
+  . rayDir
+  . specular // flag
+  . bounce // same for all rays of the same batch
+  . rng
+  . inside // flag
  . write special kernels (create separate project for this):
   . primary kernel: generates primary rays, handles them and save next bounce to memory
   . secondary kernel: loads secondary rays from memory, handles them and saves next bounce to memory  
@@ -457,6 +463,8 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  . store triangles in texture memory
  . use woopified triangle representation
  .implement SAH BVH building algo
+- there may be a bug in how we account for light contribution when a ray hits the light directly
+ . or maybe we just need a smaller light
 
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
