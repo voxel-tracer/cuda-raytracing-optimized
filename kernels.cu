@@ -351,14 +351,15 @@ __device__ void color(const RenderContext& context, path& p) {
         if (primary && fromMesh) context.rayStat(NUM_RAYS_PRIMARY_HIT_MESH);
 #endif
         if (inters.objId == LIGHT) {
+            // only specular rays can intersect the light
+
 #ifdef PATH_DBG
             if (p.dbg) printf("bounce %d: HIT LIGHT\n", p.bounce);
 #endif
             // ray hit the light, compute its contribution and add it to the path's color
 #ifdef SHADOW
-            // we should uncomment the 2 lines below, but its causing too much noise
-            //if (p.specular) // only account for light if specular ray
-            //    p.color += p.attenuation * context.lightColor;
+            // we should uncomment this line, but we need to compute light contribution properly
+            // p.color += p.attenuation * context.lightColor;
 #else
             p.color += p.attenuation * context.lightColor;
 #endif
@@ -419,7 +420,7 @@ __device__ void color(const RenderContext& context, path& p) {
         p.origin += scatter.t * p.rayDir;
         p.rayDir = scatter.wi;
         p.attenuation *= scatter.throughput;
-        p.specular = p.specular && scatter.specular;
+        p.specular = scatter.specular;
         p.inside = scatter.refracted ? !p.inside : p.inside;
 #ifdef SHADOW
         // trace shadow ray for diffuse rays
