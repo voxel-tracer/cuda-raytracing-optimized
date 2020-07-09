@@ -12,6 +12,8 @@
 
 #include "kernels.h"
 
+#include "staircase_scene.h"
+
 const mat3x3 xUp = {
     vec3(0,-1,0),
     vec3(1,0,0),
@@ -37,20 +39,6 @@ float random_float(unsigned int& state) {
 
 #define RND (random_float(rand_state))
 
-camera setup_camera(int nx, int ny, const mesh& m, vec3 lookfrom) {
-    lookfrom = vec3(5.555139, 173.679901, 494.515045);
-    vec3 lookat(5.555139, 173.679901, 493.515045);
-    float dist_to_focus = (lookfrom - lookat).length();
-    float aperture = 0.0f;
-    return camera(lookfrom,
-        lookat,
-        vec3(0, 1, 0),
-        42.0,
-        float(nx) / float(ny),
-        aperture,
-        dist_to_focus);
-}
-
 // http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html
 uint32_t LinearToSRGB(float x)
 {
@@ -61,7 +49,6 @@ uint32_t LinearToSRGB(float x)
     u = u < 255u ? u : 255u;
     return u;
 }
-
 
 bool loadBVH(const char* input, mesh& m, int &numPrimitivesPerLeaf) {
     std::fstream in(input, std::ios::in | std::ios::binary);
@@ -105,6 +92,70 @@ bool loadTexture(const std::string filename, stexture& tex) {
     return true;
 }
 
+bool load_scene(scene &sc) {
+    stbi_set_flip_vertically_on_load(true);
+
+    stexture *textures = new stexture[9];
+    bool success = true;
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodFloor.png", textures[0]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Wallpaper.png", textures[1]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Woodpanel.png", textures[2]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting1.png", textures[3]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting2.png", textures[4]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting3.png", textures[5]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodChair.png", textures[6]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Fabric.png", textures[7]);
+    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\BrushedAluminium.png", textures[8]);
+    if (!success) {
+        std::cerr << "Failed to load textures" << std::endl;
+        return false;
+    }
+
+    material* materials = new material[20];
+    materials[0] = { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0,-1 };              // Black
+    materials[1] = { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01,-1 };            // Brass
+    materials[2] = { material_type::METAL, vec3(), 0, 8 };                                // BrushedAluminium
+    materials[3] = { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 };                       // Candles
+    materials[4] = { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0,-1 }; // ChairSeat
+    materials[5] = { material_type::GLASS, vec3(1, 1, 1), 1.45,-1 };                      // Glass
+    materials[6] = { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05,-1 };              // Gold
+    materials[7] = { material_type::DIFFUSE, vec3(), 0, 7 };                              // Lampshade
+    materials[8] = { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 };  // MagnoliaPaint
+    materials[9] = { material_type::DIFFUSE, vec3(), 0, 3 };                              // Painting1
+    materials[10] = { material_type::DIFFUSE, vec3(), 0, 4 };                             // Painting2
+    materials[11] = { material_type::DIFFUSE, vec3(), 0, 5 };                             // Painting3
+    materials[12] = { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1,-1 };                // StainlessSteel
+    materials[13] = { material_type::DIFFUSE, vec3(), 0, 1 };                             // wallpaper
+    materials[14] = { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 }; // whitePaint
+    materials[15] = { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 };                      // WhitePlastic
+    materials[16] = { material_type::DIFFUSE, vec3(), 0, 6 };                             // WoodChair
+    materials[17] = { material_type::DIFFUSE, vec3(), 0, 0 };                             // woodFloor
+    materials[18] = { material_type::DIFFUSE, vec3(), 0, 6 };                             // WoodLamp
+    materials[19] = { material_type::DIFFUSE, vec3(), 0, 2 };                             // woodstairs
+
+    sc = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
+    return true;
+}
+
+bool setup_kernel_scene(const scene sc, kernel_scene& ksc) {
+    //plane floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
+    mesh *m = new mesh();
+    int numPrimitivesPerLeaf = 0;
+
+    if (!loadBVH(sc.filename, *m, numPrimitivesPerLeaf)) {
+        std::cerr << "Failed to load bvh file" << std::endl;
+        std::cerr.flush();
+        return false;
+    }
+
+    std::cerr << " there are " << m->numTris << " triangles" << ", and " << m->numBvhNodes << " bvh nodes" << std::endl;
+    std::cerr << " bbox.min " << m->bounds.min << "\n bbox.max " << m->bounds.max << std::endl;
+
+    ksc = { m, plane(), sc.materials, sc.numMaterials, sc.textures, sc.numTextures, numPrimitivesPerLeaf };
+
+    return true;
+}
+
 int main() {
     bool perf = false;
     bool fast = true;
@@ -119,70 +170,21 @@ int main() {
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
 
-    stbi_set_flip_vertically_on_load(true);
+    camera cam = setup_camera(nx, ny);
 
-    stexture textures[9];
-    bool success = true;
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodFloor.png", textures[0]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Wallpaper.png", textures[1]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Woodpanel.png", textures[2]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting1.png", textures[3]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting2.png", textures[4]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting3.png", textures[5]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodChair.png", textures[6]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Fabric.png", textures[7]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\BrushedAluminium.png", textures[8]);
-    if (!success) {
-        std::cerr << "Failed to load textures" << std::endl;
+    scene sc;
+    if (!load_scene(sc)) {
         return -1;
     }
 
-    material materials[20] = {
-        { material_type::DIFFUSE, vec3(0.01, 0.01, 0.01), 0,-1 },              // Black
-        { material_type::METAL, vec3(0.27, 0.254, 0.15), 0.01,-1 },            // Brass
-        { material_type::METAL, vec3(), 0, 8 },                   // BrushedAluminium
-        { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // Candles
-        { material_type::DIFFUSE, vec3(0.117647, 0.054902, 0.0666667), 0,-1 }, // ChairSeat
-        { material_type::GLASS, vec3(1, 1, 1), 1.45,-1 },                      // Glass
-        { material_type::METAL, vec3(1.0, 0.95, 0.35), 0.05,-1 },              // Gold
-        { material_type::DIFFUSE, vec3(), 0, 7 },                 // Lampshade
-        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 },  // MagnoliaPaint
-        { material_type::DIFFUSE, vec3(), 0, 3 },                 // Painting1
-        { material_type::DIFFUSE, vec3(), 0, 4 },                 // Painting2
-        { material_type::DIFFUSE, vec3(), 0, 5 },                 // Painting3
-        { material_type::METAL, vec3(1.0, 1.0, 1.0), 0.1,-1 },                 // StainlessSteel
-        { material_type::DIFFUSE, vec3(), 0, 1 },                 // wallpaper
-        { material_type::DIFFUSE, vec3(0.578596, 0.578596, 0.578596), 0,-1 },  // whitePaint
-        { material_type::DIFFUSE, vec3(1, 1, 1), 0,-1 },                       // WhitePlastic
-        { material_type::DIFFUSE, vec3(), 0, 6 },                 // WoodChair
-        { material_type::DIFFUSE, vec3(), 0, 0 },                 // woodFloor
-        { material_type::DIFFUSE, vec3(), 0, 6 },                 // WoodLamp
-        { material_type::DIFFUSE, vec3(), 0, 2 },                 // woodstairs
-    };
-    scene staircase = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
-
-    scene sc = staircase;
-    // init
-    vec3 *fb;
-    {
-        plane floor = plane(vec3(0, -0.01, 0), vec3(0, 1, 0));
-        mesh m;
-        int numPrimitivesPerLeaf = 0;
-
-        if (!loadBVH(sc.filename, m, numPrimitivesPerLeaf)) {
-            std::cerr << "Failed to load bvh file" << std::endl;
-            std::cerr.flush();
-            return -1;
-        }
-
-        std::cerr << " there are " << m.numTris << " triangles" << ", and " << m.numBvhNodes << " bvh nodes" << std::endl;
-        std::cerr << " bbox.min " << m.bounds.min << "\n bbox.max " << m.bounds.max << std::endl;
-
-        camera cam = setup_camera(nx, ny, m, sc.camPos);
-
-        kernel_scene kscene = { m, floor, sc.materials, sc.numMaterials, sc.textures, sc.numTextures };
-        initRenderer(kscene, cam, &fb, nx, ny, maxDepth, numPrimitivesPerLeaf);
+    kernel_scene ksc;
+    if (!setup_kernel_scene(sc, ksc)) {
+        std::cerr << "Failed to setup kernel scene" << std::endl;
+        return -1;
     }
+
+    vec3 *fb;
+    initRenderer(ksc, cam, &fb, nx, ny, maxDepth);
 
     clock_t start, stop;
     start = clock();

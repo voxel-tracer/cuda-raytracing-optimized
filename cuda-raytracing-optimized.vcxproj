@@ -19,6 +19,7 @@
     <ClInclude Include="rnd.h" />
     <ClInclude Include="intersections.h" />
     <ClInclude Include="scene_materials.h" />
+    <ClInclude Include="staircase_scene.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="vec3.h" />
   </ItemGroup>

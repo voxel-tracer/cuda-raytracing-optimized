@@ -430,13 +430,32 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   . bounce // same for all rays of the same batch
   . rng
   . inside // flag
+  . done // flag
+
  . write special kernels (create separate project for this):
-  . primary kernel: generates primary rays, handles them and save next bounce to memory
-  . secondary kernel: loads secondary rays from memory, handles them and saves next bounce to memory  
-  . save rays to disk
-  . main project loads specific file from disk and runs it (only handle secondary rays for now)
- . run tool on various depths and confirm numbers match what I collected before
-  . also collect divergence as reported by nvprof
+  . DONE primary kernel: generates primary rays, handles them and save next bounce to memory
+   . DONE allocate save_paths[nx*ny*ns]
+   . DONE change render() logic to process all ns for the same pixel one after another (to simulate how real renderer works)
+   . DONE only generate paths for now
+   . DONE saves each path in its correct position according to (x, y, s)
+
+  . refactor scene initialization so we can reuse it
+   . perf/stats are different from before, investigate why ?
+    . stash changes and collect stats once more
+  . color kernel: 
+   . loads rays from memory and handles hit() and color() logic for a single bounce
+   . handles DONE rays by skipping them (dead lane) and marks done rays accordingly
+   . saves color to memory buffer that gets saved to disk so we can visually confirm it works
+   . enable shadow and textures and make sure they work as well
+  . primary_color kernel:
+   . combines primary() and color() kernels to simulate how 1st bounce works in my renderer
+  . save rays for each bounce on disk so we can run each bounce separately
+  . run bounces and check if we are getting similar performance and stats to the numbers we collected before
+  . start collecting more advanced performance metrics:
+   . nvprof divergence
+   . better coherence metric from paper I read
+   . my own divergence metric   
+
  . go through the kernel code and identify potential divergence points
  . measure divergence at those points then analyse the results
 - Read ray sorting papers and identify strategies worth exploring in my kernel
@@ -465,7 +484,12 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  .implement SAH BVH building algo
 - there may be a bug in how we account for light contribution when a ray hits the light directly
  . or maybe we just need a smaller light
-
+- potential optimizations 
+ . for primary rays it may make sense to handle all samples of same pixel in consecutive threads rather
+   than by the same thread
+  . 2 layouts possible:
+   . DONE all samples for same pixel in consecutive order starting from (y*nx + x)*ns + s
+   . one sample per pixel at (nx*ny)*s + y*nx + x
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
 ----------------------------------------------------------------------------------------------------------

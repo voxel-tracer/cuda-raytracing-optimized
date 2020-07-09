@@ -49,6 +49,7 @@ struct path {
     vec3 attenuation;
     rand_state rng;
     bool inside = false;
+    bool done = false;
 #ifdef PATH_DBG
     bool dbg = false;
 #endif

@@ -23,7 +23,7 @@
 
 void check_cuda(cudaError_t result, char const* const func, const char* const file, int const line) {
     if (result) {
-        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
+        std::cerr << "CUDA error = " << cudaGetErrorString(result) << " at " <<
             file << ":" << line << " '" << func << "' \n";
         // Make sure we call CUDA Device Reset before exiting
         cudaDeviceReset();
@@ -505,7 +505,7 @@ __global__ void render(const RenderContext context) {
 }
 
 extern "C" void
-initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny, int maxDepth, int numPrimitivesPerLeaf) {
+initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny, int maxDepth) {
     renderContext.nx = nx;
     renderContext.ny = ny;
     renderContext.floor = sc.floor;
@@ -515,12 +515,12 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
-    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m.numTris * sizeof(triangle)));
-    checkCudaErrors(cudaMemcpy(renderContext.tris, sc.m.tris, sc.m.numTris * sizeof(triangle), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, sc.m.numBvhNodes * sizeof(bvh_node)));
-    checkCudaErrors(cudaMemcpy(renderContext.bvh, sc.m.bvh, sc.m.numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
-    renderContext.firstLeafIdx = sc.m.numBvhNodes / 2;
-    renderContext.bounds = sc.m.bounds;
+    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m->numTris * sizeof(triangle)));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, sc.m->tris, sc.m->numTris * sizeof(triangle), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, sc.m->numBvhNodes * sizeof(bvh_node)));
+    checkCudaErrors(cudaMemcpy(renderContext.bvh, sc.m->bvh, sc.m->numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+    renderContext.firstLeafIdx = sc.m->numBvhNodes / 2;
+    renderContext.bounds = sc.m->bounds;
 
     checkCudaErrors(cudaMalloc((void**)&renderContext.materials, sc.numMaterials * sizeof(material)));
     checkCudaErrors(cudaMemcpy(renderContext.materials, sc.materials, sc.numMaterials * sizeof(material), cudaMemcpyHostToDevice));
@@ -553,7 +553,7 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
     }
 #endif
     renderContext.cam = cam;
-    renderContext.numPrimitivesPerLeaf = numPrimitivesPerLeaf;
+    renderContext.numPrimitivesPerLeaf = sc.numPrimitivesPerLeaf;
     renderContext.initStats();
 }
 
