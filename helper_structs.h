@@ -198,3 +198,16 @@ struct camera
     float lens_radius;
 
 };
+
+struct kernel_scene {
+    mesh* m;
+    plane floor;
+
+    material* materials;
+    int numMaterials;
+
+    stexture* textures;
+    int numTextures;
+
+    int numPrimitivesPerLeaf;
+};

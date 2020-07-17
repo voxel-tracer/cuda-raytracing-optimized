@@ -5,6 +5,7 @@
 *.cubin
 *.fatbin
 *.ppm
+*.sbk
 
 v16
 x64

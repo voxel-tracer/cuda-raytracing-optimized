@@ -422,7 +422,7 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   identify what to optimize next
 - DONE we have different types of rays: primary, secondary-bounceX, shadows
   measure the cost of each type. This will help us identify specific areas to optimize
-- Investigate why secondary rays are expensive
+- Prepare performance profiling
  . DONE print kernel code and identify min info we need to save for each path so we can run next bounce separately
   . origin
   . rayDir
@@ -431,33 +431,53 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   . rng
   . inside // flag
   . done // flag
-
  . write special kernels (create separate project for this):
   . DONE primary kernel: generates primary rays, handles them and save next bounce to memory
    . DONE allocate save_paths[nx*ny*ns]
    . DONE change render() logic to process all ns for the same pixel one after another (to simulate how real renderer works)
    . DONE only generate paths for now
    . DONE saves each path in its correct position according to (x, y, s)
-
-  . refactor scene initialization so we can reuse it
-   . perf/stats are different from before, investigate why ?
-    . stash changes and collect stats once more
-  . color kernel: 
+  . DONE refactor scene initialization so we can reuse it
+  . DONE color kernel: 
    . loads rays from memory and handles hit() and color() logic for a single bounce
    . handles DONE rays by skipping them (dead lane) and marks done rays accordingly
    . saves color to memory buffer that gets saved to disk so we can visually confirm it works
    . enable shadow and textures and make sure they work as well
-  . primary_color kernel:
+  . DONE save rays for each bounce on disk so we can run each bounce separately
+  . DONE primary_color kernel:
    . combines primary() and color() kernels to simulate how 1st bounce works in my renderer
-  . save rays for each bounce on disk so we can run each bounce separately
-  . run bounces and check if we are getting similar performance and stats to the numbers we collected before
-  . start collecting more advanced performance metrics:
-   . nvprof divergence
-   . better coherence metric from paper I read
-   . my own divergence metric   
+  . DONE run bounces and check if we are getting similar performance and stats to the numbers we collected before
+		bounce 0 took 4.991 seconds.
+		bounce 1 took 11.217 seconds.
+		bounce 2 took 12.183 seconds.
+		bounce 3 took 12.063 seconds.
+		bounce 4 took 11.849 seconds.
+		bounce 5 took 11.677 seconds.
+		bounce 6 took 11.524 seconds.
+		bounce 7 took 11.377 seconds.
+		bounce 8 took 11.279 seconds.
+	this is actually similar to the times I collected for my original kernel even though memory I/O is higher now
+	  because of all the loading/saving of paths
+  . DONE add ray stats and make sure they match my original kernel
+  . DONE save paths to disk so we can run bounces independently of each other
+   . handle primary rays in a special way as we have 2 ways to run them
+    . just generate rays
+	. generate and handle 1st bounce
+- DONE compare primary vs secondary bounces
+ . DONE collect nvprof divergence metrics
+ . DONE compare runs in visual profiler for bounce 0 and 1
+  . 160x200x4spp
 
- . go through the kernel code and identify potential divergence points
- . measure divergence at those points then analyse the results
+- confirm that hitBVH() is the main source of divergence
+ . hack the code to force all rays of the same warp to be exactly the same
+
+- understand why warp_execution_efficiency is so low even for primary rays
+
+- collect other metrics
+ . collect my own divergence metric
+  . print code and identify potential divergence points
+ . [optional] better coherence metrics
+
 - Read ray sorting papers and identify strategies worth exploring in my kernel
  . for each strategy, first implement adhoc and test its effect by running a single bounce
    if its effective enough, think about how to implement it in the original kernel
@@ -490,6 +510,7 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   . 2 layouts possible:
    . DONE all samples for same pixel in consecutive order starting from (y*nx + x)*ns + s
    . one sample per pixel at (nx*ny)*s + y*nx + x
+- primary() + bounce() is different from primaryBounce() kernel because of the way we save rng for each path
 ----------------------------------------------------------------------------------------------------------
 GENERAL NOTES
 ----------------------------------------------------------------------------------------------------------
