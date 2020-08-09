@@ -79,7 +79,7 @@ struct RenderContext {
     camera cam;
 
     sphere light = sphere(vec3(52.514355, 715.686951, -272.620972), 50);
-    vec3 lightColor = vec3(1, 1, 1) * 80;
+    vec3 lightColor = vec3(1, 1, 1) * 20;
 
     material* materials;
 #ifdef TEXTURES
@@ -131,10 +131,10 @@ struct RenderContext {
 
 RenderContext renderContext;
 
-__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, tri_hit& rec, bool isShadow) {
+__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
     bool down = true; 
     int idx = 1;
-    float closest = FLT_MAX;
+    float closest = t_max;
     unsigned int bitStack = 0;
 #ifdef BVH_COUNT
     uint64_t traversed = 0;
@@ -154,7 +154,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                             break; // we reached the end of the primitives buffer
                         float u, v;
                         float hitT = triangleHit(tri, r, t_min, closest, u, v);
-                        if (hitT < FLT_MAX) {
+                        if (hitT < closest) {
                             if (isShadow) return 0.0f;
 
                             closest = hitT;
@@ -204,7 +204,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
     }
 
 #ifdef BVH
-    return hitBvh(r, context, t_min, rec, isShadow);
+    return hitBvh(r, context, t_min, t_max, rec, isShadow);
 #else
     float closest = FLT_MAX;
     for (uint32_t i = 0; i < context.numTris; i++) {
@@ -223,12 +223,12 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
 #endif // BVH
 }
 
-__device__ bool hit(const RenderContext& context, const path& p, bool isShadow, intersection &inters) {
+__device__ bool hit(const RenderContext& context, const path& p, float t_max, bool isShadow, intersection &inters) {
     const ray r = isShadow ? ray(p.origin, p.shadowDir) : ray(p.origin, p.rayDir);
     tri_hit triHit;
     bool primary = p.bounce == 0;
     inters.objId = NONE;
-    if ((inters.t = hitMesh(r, context, EPSILON, FLT_MAX, triHit, primary, isShadow)) < FLT_MAX) {
+    if ((inters.t = hitMesh(r, context, EPSILON, t_max, triHit, primary, isShadow)) < t_max) {
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
@@ -250,7 +250,7 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
         //    inters.normal = context.floor.norm;
         //}
         //else 
-        if (p.specular && sphereHit(context.light, r, EPSILON, FLT_MAX) < FLT_MAX) { // specular rays should intersect with the light
+        if (p.specular && sphereHit(context.light, r, EPSILON, t_max) < t_max) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
         }
@@ -267,7 +267,7 @@ __device__ bool hit(const RenderContext& context, const path& p, bool isShadow, 
 }
 
 #ifdef SHADOW
-__device__ bool generateShadowRay(const RenderContext& context, path& p, const intersection &inters) {
+__device__ bool generateShadowRay(const RenderContext& context, path& p, const intersection &inters, float &lightDist) {
     // create a random direction towards the light
     // coord system for sampling
     const vec3 sw = unit_vector(context.light.center - p.origin);
@@ -293,6 +293,9 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
     const float omega = 2 * M_PI * (1.0f - cosAMax);
     p.lightContribution = p.attenuation * context.lightColor * dotl * omega / M_PI;
 
+    // compute distance to light so we only intersect triangles in front of the light
+    lightDist = (context.light.center - p.origin).length() - context.light.radius;
+
     return true;
 }
 #endif
@@ -315,7 +318,7 @@ __device__ void color(const RenderContext& context, path& p) {
         if (p.attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
 #endif
         intersection inters;
-        if (!hit(context, p, false, inters)) {
+        if (!hit(context, p, FLT_MAX, false, inters)) {
 #ifdef PATH_DBG
             if (p.dbg) printf("bounce %d: NO_HIT\n", p.bounce);
 #endif
@@ -426,14 +429,15 @@ __device__ void color(const RenderContext& context, path& p) {
         p.inside = scatter.refracted ? !p.inside : p.inside;
 #ifdef SHADOW
         // trace shadow ray for diffuse rays
-        if (!p.specular && generateShadowRay(context, p, inters)) {
+        float lightDist;
+        if (!p.specular && generateShadowRay(context, p, inters, lightDist)) {
 #ifdef PATH_DBG
             if (p.dbg) printf("bounce %d: SHADOW\n", p.bounce);
 #endif
 #ifdef STATS
             context.rayStat(NUM_RAYS_SHADOWS);
 #endif
-            if (!hit(context, p, true, inters)) {
+            if (!hit(context, p, lightDist, true, inters)) {
 #ifdef PATH_DBG
                 if (p.dbg) printf("bounce %d: SHADOW NO HIT\n", p.bounce);
 #endif
@@ -562,7 +566,7 @@ runRenderer(int ns, int tx, int ty) {
     renderContext.ns = ns;
 
     // Render our buffer
-    dim3 blocks(renderContext.nx / tx + 1, renderContext.ny / ty + 1);
+    dim3 blocks((renderContext.nx + tx - 1) / tx, (renderContext.ny + ty - 1) / ty);
     dim3 threads(tx, ty);
     render <<<blocks, threads >>> (renderContext);
     checkCudaErrors(cudaGetLastError());
