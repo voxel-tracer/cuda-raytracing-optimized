@@ -467,28 +467,54 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  . DONE collect nvprof divergence metrics
  . DONE compare runs in visual profiler for bounce 0 and 1
   . 160x200x4spp
-
-- confirm that hitBVH() is the main source of divergence
- . hack the code to force all rays of the same warp to be exactly the same
-
-- understand why warp_execution_efficiency is so low even for primary rays
-
-- collect other metrics
+- DONE confirm that hitBVH() is the main source of divergence
+ . DONE hack the code to force all rays of the same warp to be exactly the same
+ . DONE collect efficiency metrics for the perfect case
+- DONE understand why warp_execution_efficiency is so low even for primary rays
+- DONE collect other metrics
  . collect my own divergence metric
   . print code and identify potential divergence points
- . [optional] better coherence metrics
-
-- Read ray sorting papers and identify strategies worth exploring in my kernel
+- DONE change primaryBounce() to have each warp handle the same pixel
+  this should increase traversal coherency and improve both active and leaf metrics
+- DONE print active metric per bvh level
+  see if higher level have better convergence than lower levels
+- DONE Read ray sorting papers and identify strategies worth exploring in my kernel
  . for each strategy, first implement adhoc and test its effect by running a single bounce
    if its effective enough, think about how to implement it in the original kernel
+- DONE initial implementation Aila ray sorting using Morton codes
+  results are bad, but implmentation is actually wrong as bounce() kernel assumes specific ordering of the paths
+- DONE rewrite bounce to handle each sample separately and not using a loop
+ . save colors one per sample as we did for primary1
+- DONE need to rewrite bounce to handle paths in the order they come in
+  perf is still not great (320x400 64spp bounce 1):
+			before	sorted
+  active	22%		24%
+  leaf		5.6%	6.5%
+  . not sure if there is a bug in the sorting logic or if the sorting key is just bad
 
+- introduce coherence metric that exposes how much potential coherence can be exploited by
+  sorting the rays
+  . for N paths, the metric value will range between:
+	N = best case, all paths traverse the same nodes
+	1 = worst case, each path traverses a unique set of nodes
+  . measure the coherence metric for primary and secondary rays at multiple resolution
+    we should see it improve when we increase the resolution
+	(no shadows)
+				resolution		coherence	numpaths	active	leaf	numpaths/coherence	(total/unique)
+	primary0 	1280x1600x32	  878,459	65,536,000	72%		44%		74					
+	primary0 	640x800x64		  442,202	32,768,000	63%		33%		74					
+	primary0 	640x800x32		  222,441	16,384,000	63%		33%		74					
+	primary0 	320x400x64		  112,346	 8,192,000	53%		24%		73					3,077,943,166 / 27,397
+	primary0 	320x400x32		   56,946	 4,096,000	53%		24%		72					
+	bounce 1	320x400x64		   57,529	 8,192,000	23%		 6%		141					2,781,000,550 / 48,341
+	bounce 2	320x400x64		   47,929	 8,075,841	19%		 5%		168					2,362,004,317 / 49,281
+	bounce 3	320x400x64		   46,656	 7,982,478	18%		 5%		170					2,305,323,220 / 49,411
+	
 - go through all the notes in this document and identify optimizations that apply to the mega-kernel
  . truncate low throughput paths (also rename path.attenuation to .throughput)
    generally not that useful except with subsurface scattering, especially if russian roulette is used
-- [optional] rewrite mega-kernel to render a single sample per pixel
-  I could split rendering in iterations
-  I could use multiple threads per pixel
-  question: why would I want to do that ?
+- [optional] the way I handle shadow rays is wrong, I should only consider hits that are closer than
+  the light itself
 
  NOTES
  -----

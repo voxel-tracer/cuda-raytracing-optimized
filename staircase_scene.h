@@ -42,6 +42,23 @@ void writePPM(int nx, int ny, const vec3* colors) {
     }
 }
 
+void writePPM(int nx, int ny, int ns, const vec3* colors) {
+    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+    for (int j = ny - 1; j >= 0; j--) {
+        for (int i = 0; i < nx; i++) {
+            vec3 color(0, 0, 0);
+            for (auto s = 0; s < ns; s++) {
+                color += colors[(j * nx + i) * ns + s];
+            }
+            color /= float(ns);
+            int ir = LinearToSRGB(color.r());
+            int ig = LinearToSRGB(color.g());
+            int ib = LinearToSRGB(color.b());
+            std::cout << ir << " " << ig << " " << ib << "\n";
+        }
+    }
+}
+
 camera setup_camera(int nx, int ny) {
     const vec3 lookfrom = vec3(5.555139, 173.679901, 494.515045);
     vec3 lookat(5.555139, 173.679901, 493.515045);
