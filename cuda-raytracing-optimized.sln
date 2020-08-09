@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bvh-builder", "..\bvh-build
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SingleBounceKernel", "..\SingleBounceKernel\SingleBounceKernel.vcxproj", "{C1B28F09-6961-4258-A82C-2715C8867AA0}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RaySorter", "..\RaySorter\RaySorter.vcxproj", "{DDA01835-64A6-4849-B76C-034322B53FC8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -37,6 +39,12 @@ Global
 		{C1B28F09-6961-4258-A82C-2715C8867AA0}.Release|x64.ActiveCfg = Release|x64
 		{C1B28F09-6961-4258-A82C-2715C8867AA0}.Release|x64.Build.0 = Release|x64
 		{C1B28F09-6961-4258-A82C-2715C8867AA0}.Release|x86.ActiveCfg = Release|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Debug|x64.ActiveCfg = Debug|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Debug|x64.Build.0 = Debug|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Debug|x86.ActiveCfg = Debug|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Release|x64.ActiveCfg = Release|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Release|x64.Build.0 = Release|x64
+		{DDA01835-64A6-4849-B76C-034322B53FC8}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
