@@ -6,6 +6,9 @@
 *.fatbin
 *.ppm
 *.sbk
+*.sorted
+*.bak
 
 v16
 x64
+old
