@@ -95,6 +95,8 @@ bool loadBVH(const char* input, mesh& m, int& numPrimitivesPerLeaf) {
     in.read((char*)&m.bounds.max, sizeof(vec3));
 
     in.read((char*)&numPrimitivesPerLeaf, sizeof(int));
+
+    return true;
 }
 
 bool loadTexture(const std::string filename, stexture& tex) {

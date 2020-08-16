@@ -3,7 +3,7 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
-//#define PATH_DBG
+#define PATH_DBG
 //#define BVH_COUNT
 
 typedef unsigned int rand_state;
@@ -23,6 +23,10 @@ struct intersection {
 #ifdef BVH_COUNT
     uint64_t traversed = 0;
 #endif
+#ifdef SAVE_BITSTACK
+    unsigned int bitstack = 0;
+#endif
+
 };
 
 struct scatter_info {
@@ -44,7 +48,7 @@ struct path {
     vec3 shadowDir;
     vec3 lightContribution; // direct illumination that will be added to color if this path's shadow ray reaches the light
 
-    uint32_t pixelId;
+    //uint32_t pixelId;
     uint8_t bounce;
     vec3 attenuation;
     rand_state rng;
@@ -53,6 +57,10 @@ struct path {
 #ifdef PATH_DBG
     bool dbg = false;
 #endif
+#ifdef SAVE_BITSTACK
+    unsigned int bitstack = 0;
+#endif // SAVE_BITSTACK
+
 };
 
 struct bbox {
@@ -170,6 +178,9 @@ struct tri_hit {
     float u, v;
 #ifdef BVH_COUNT
     uint64_t traversed;
+#endif
+#ifdef SAVE_BITSTACK
+    unsigned int bitstack = 0;
 #endif
 };
 

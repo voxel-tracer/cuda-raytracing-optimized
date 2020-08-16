@@ -478,11 +478,11 @@ __global__ void render(const RenderContext context) {
     if ((i >= context.nx) || (j >= context.ny)) return;
 
     path p;
-    p.pixelId = j * context.nx + i;
-    p.rng = (wang_hash(p.pixelId) * 336343633) | 1;
+    uint64_t pixelId = j * context.nx + i;
+    p.rng = (wang_hash(pixelId) * 336343633) | 1;
 #ifdef PATH_DBG
     const int dbgId = (context.ny - 308) * context.nx + 164;
-    p.dbg = p.pixelId == dbgId;
+    p.dbg = pixelId == dbgId;
 #endif
     vec3 col(0, 0, 0); // this is specific to the pixel so it should be stored separately from the path
     for (int s = 0; s < context.ns; s++) {
@@ -505,7 +505,7 @@ __global__ void render(const RenderContext context) {
     //col[0] = sqrt(col[0]);
     //col[1] = sqrt(col[1]);
     //col[2] = sqrt(col[2]);
-    context.fb[p.pixelId] = col / float(context.ns);
+    context.fb[pixelId] = col / float(context.ns);
 }
 
 extern "C" void
