@@ -18,7 +18,7 @@
 
 #define EPSILON 0.01f
 
-//#define DUAL_NODES
+#define DUAL_NODES
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -155,14 +155,17 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             // load both children nodes
             int idx2 = idx << 1;
             bvh_node left = context.bvh[idx2];
-            bool hitLeft = hit_bbox(left.min(), left.max(), r, closest);
+            float leftHit = hit_bbox_dist(left.min(), left.max(), r, closest);
+            bool traverseLeft = leftHit < closest;
             bvh_node right = context.bvh[idx2 + 1];
-            bool hitRight = hit_bbox(right.min(), right.max(), r, closest);
-            if (hitLeft && hitRight) {
-                idx = idx2;
+            float rightHit = hit_bbox_dist(right.min(), right.max(), r, closest);
+            bool traverseRight = rightHit < closest;
+            bool swap = rightHit < leftHit;
+            if (traverseLeft && traverseRight) {
+                idx = idx2 + (swap ? 1 : 0);
                 bitStack = (bitStack << 1) + 1;
-            } else if (hitLeft || hitRight) {
-                idx = idx2 + (hitRight ? 1 : 0);
+            } else if (traverseLeft || traverseRight) {
+                idx = idx2 + (swap ? 1 : 0);
                 bitStack = bitStack << 1;
             } else {
                 pop_bitstack(bitStack, idx);

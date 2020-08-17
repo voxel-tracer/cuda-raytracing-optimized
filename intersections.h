@@ -22,6 +22,24 @@ __device__ bool hit_bbox(const vec3& bmin, const vec3& bmax, const ray& r, float
     return true;
 }
 
+__device__ float hit_bbox_dist(const vec3& bmin, const vec3& bmax, const ray& r, float t_max) {
+    float t_min = 0.001f;
+    for (int a = 0; a < 3; a++) {
+        float invD = 1.0f / r.direction()[a];
+        float t0 = (bmin[a] - r.origin()[a]) * invD;
+        float t1 = (bmax[a] - r.origin()[a]) * invD;
+        if (invD < 0.0f) {
+            float tmp = t0; t0 = t1; t1 = tmp;
+        }
+        t_min = t0 > t_min ? t0 : t_min;
+        t_max = t1 < t_max ? t1 : t_max;
+        if (t_max < t_min)
+            return FLT_MAX;
+    }
+
+    return t_min;
+}
+
 __device__ float planeHit(const plane& p, const ray& r, float t_min, float t_max) {
     float denom = dot(p.norm, r.direction());
 
