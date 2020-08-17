@@ -491,8 +491,7 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   active	22%		24%
   leaf		5.6%	6.5%
   . not sure if there is a bug in the sorting logic or if the sorting key is just bad
-
-- introduce coherence metric that exposes how much potential coherence can be exploited by
+- DONE introduce coherence metric that exposes how much potential coherence can be exploited by
   sorting the rays
   . for N paths, the metric value will range between:
 	N = best case, all paths traverse the same nodes
@@ -500,16 +499,46 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
   . measure the coherence metric for primary and secondary rays at multiple resolution
     we should see it improve when we increase the resolution
 	(no shadows)
-				resolution		coherence	numpaths	active	leaf	numpaths/coherence	(total/unique)
+				resolution		coherence	numpaths	active	leaf	numpaths/coherence(sigma)	(total/unique)
 	primary0 	1280x1600x32	  878,459	65,536,000	72%		44%		74					
 	primary0 	640x800x64		  442,202	32,768,000	63%		33%		74					
 	primary0 	640x800x32		  222,441	16,384,000	63%		33%		74					
-	primary0 	320x400x64		  112,346	 8,192,000	53%		24%		73					3,077,943,166 / 27,397
+	primary0 	320x400x64		  112,346	 8,192,000	53%		24%		73							3,077,943,166 / 27,397
 	primary0 	320x400x32		   56,946	 4,096,000	53%		24%		72					
-	bounce 1	320x400x64		   57,529	 8,192,000	23%		 6%		141					2,781,000,550 / 48,341
-	bounce 2	320x400x64		   47,929	 8,075,841	19%		 5%		168					2,362,004,317 / 49,281
-	bounce 3	320x400x64		   46,656	 7,982,478	18%		 5%		170					2,305,323,220 / 49,411
-	
+	bounce 1	320x400x64		   57,529	 8,192,000	23%		 6%		141							2,781,000,550 / 48,341
+	bounce 2	320x400x64		   47,929	 8,075,841	19%		 5%		168							2,362,004,317 / 49,281
+	bounce 3	320x400x64		   46,656	 7,982,478	18%		 5%		170							2,305,323,220 / 49,411
+  . coherence = total traversed nodes / unique traversed nodes
+	total traversed nodes = num paths x average nodes per path
+	sigma = num paths / coherence = unique traversed nodes  average nodes per path
+  . I still don't know what sigma means but it normalizes the coherence regardless of nx.ny.ns
+    smaller sigma values are better
+  . according to the metrics collected, average nodes per path ~375 which too high for a 17 level BVH
+  . possible explanation: there is an issue with the traversal algorithm, and/or the BVH quality is too low and there
+    is too much overlap between sibling nodes
+- DONE investigate why average nodes per path is high
+ . I printed the traversal of one random sample through the BVH
+ . I found out that loading one child at a time can be really expensive and in many cases only one child is hit yet we
+   still back track and try the 2nd child (including a memory load)
+ . by loading both siblings at once we can quickly identify if we need to traverse both of them and push the 2nd child to
+   the stack
+ . additionally we can use the bitstack to do a single back track to the next node that needs to be visited instead of multiple
+   consecutive back tracks
+ . for 320x400x64 render time went down from 65s to 32s YAY!
+
+- investigate why after I "fixed" shadow rays, rendering slowed down considerably
+
+- measure how many times both children need to be traversed vs a single one vs none
+ . if 2nd measure (both children need to be traversed) is high then choosing the right order can improve performance
+- redo all of my performance tests
+ . start with coherence and active/leaf
+ . recompute individual bounce times in spreadsheet to see if traversal is still biggest bottleneck
+
+- SAH building should improve BVH quality and hopefully improve coherence as well
+- given that shadow rays are expensive it makes sense to use splitting to reduce ns overall but increase
+  number of shadow rays per intersection.
+ . this should improve shadow rays traversal coherence
+
 - go through all the notes in this document and identify optimizations that apply to the mega-kernel
  . truncate low throughput paths (also rename path.attenuation to .throughput)
    generally not that useful except with subsurface scattering, especially if russian roulette is used
