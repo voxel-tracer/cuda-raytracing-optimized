@@ -18,6 +18,8 @@
 
 #define EPSILON 0.01f
 
+//#define DUAL_NODES
+
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
@@ -130,9 +132,72 @@ struct RenderContext {
 };
 
 RenderContext renderContext;
+#ifdef DUAL_NODES
+
+__device__ void pop_bitstack(unsigned int& bitStack, int& idx) {
+    int m = __ffsll(bitStack) - 1;
+    bitStack = (bitStack >> m) ^ 1;
+    idx = (idx >> m) ^ 1;
+}
 
 __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
-    bool down = true; 
+    int idx = 1;
+    float closest = t_max;
+    unsigned int bitStack = 1;
+#ifdef BVH_COUNT
+    uint64_t traversed = 0;
+#endif
+    while (idx) {
+        if (idx < context.firstLeafIdx) { // internal node
+#ifdef BVH_COUNT
+            traversed += 2;
+#endif
+            // load both children nodes
+            int idx2 = idx << 1;
+            bvh_node left = context.bvh[idx2];
+            bool hitLeft = hit_bbox(left.min(), left.max(), r, closest);
+            bvh_node right = context.bvh[idx2 + 1];
+            bool hitRight = hit_bbox(right.min(), right.max(), r, closest);
+            if (hitLeft && hitRight) {
+                idx = idx2;
+                bitStack = (bitStack << 1) + 1;
+            } else if (hitLeft || hitRight) {
+                idx = idx2 + (hitRight ? 1 : 0);
+                bitStack = bitStack << 1;
+            } else {
+                pop_bitstack(bitStack, idx);
+            }
+        } else { // leaf node
+            int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
+            for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
+                const triangle tri = context.tris[first + i];
+                if (isinf(tri.v[0].x()))
+                    break; // we reached the end of the primitives buffer
+                float u, v;
+                float hitT = triangleHit(tri, r, t_min, closest, u, v);
+                if (hitT < closest) {
+                    if (isShadow) return 0.0f;
+
+                    closest = hitT;
+                    rec.triId = first + i;
+                    rec.u = u;
+                    rec.v = v;
+                }
+            }
+            pop_bitstack(bitStack, idx);
+        }
+    }
+
+#ifdef BVH_COUNT
+    context.maxStat(NUM_RAYS_MAX_TRAVERSED_NODES, traversed);
+    rec.traversed = traversed;
+#endif
+    return closest;
+}
+#else
+
+__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
+    bool down = true;
     int idx = 1;
     float closest = t_max;
     unsigned int bitStack = 0;
@@ -164,23 +229,28 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                         }
                     }
                     down = false;
-                } else { // internal node
-                    // current -> left or right
+                }
+                else { // internal node
+                 // current -> left or right
                     const int childIdx = signbit(r.direction()[node.split_axis()]); // 0=left, 1=right
                     bitStack = (bitStack << 1) + childIdx; // push current child idx in the stack
                     idx = (idx << 1) + childIdx;
                 }
-            } else { // ray didn't intersect the node, backtrack
+            }
+            else { // ray didn't intersect the node, backtrack
                 down = false;
             }
-        } else if (idx == 1) { // we backtracked up to the root node
+        }
+        else if (idx == 1) { // we backtracked up to the root node
             break;
-        } else { // back tracking
+        }
+        else { // back tracking
             const int currentChildIdx = bitStack & 1;
             if ((idx & 1) == currentChildIdx) { // node == current child, visit sibling
                 idx += -2 * currentChildIdx + 1; // node = node.sibling
                 down = true;
-            } else { // we visited both siblings, backtrack
+            }
+            else { // we visited both siblings, backtrack
                 bitStack = bitStack >> 1;
                 idx = idx >> 1; // node = node.parent
             }
@@ -193,6 +263,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #endif
     return closest;
 }
+#endif
 
 __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
     if (!hit_bbox(context.bounds.min, context.bounds.max, r, t_max)) {

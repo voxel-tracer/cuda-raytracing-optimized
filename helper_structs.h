@@ -3,7 +3,7 @@
 #include <cuda_runtime.h>
 #include "vec3.h"
 
-#define PATH_DBG
+//#define PATH_DBG
 //#define BVH_COUNT
 
 typedef unsigned int rand_state;
