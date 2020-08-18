@@ -526,8 +526,6 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
    consecutive back tracks
  . for 320x400x64 render time went down from 65s to 32s YAY!
 
-- investigate why after I "fixed" shadow rays, rendering slowed down considerably
-
 - measure how many times both children need to be traversed vs a single one vs none
  . if 2nd measure (both children need to be traversed) is high then choosing the right order can improve performance
 - redo all of my performance tests

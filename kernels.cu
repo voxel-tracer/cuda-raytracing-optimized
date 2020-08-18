@@ -19,6 +19,8 @@
 #define EPSILON 0.01f
 
 #define DUAL_NODES
+#define BVH_COUNT
+
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -57,8 +59,9 @@ enum OBJ_ID {
 #define NUM_RAYS_EXCEED_MAX_BOUNCE      13
 #define NUM_RAYS_RUSSIAN_KILL           14
 #define NUM_RAYS_NAN                    15
-#define NUM_RAYS_MAX_TRAVERSED_NODES    16
-#define NUM_RAYS_SIZE                   17
+#define NUM_NODES_BOTH                  16
+#define NUM_NODES_SINGLE                17
+#define NUM_RAYS_SIZE                   18
 #endif
 
 struct RenderContext {
@@ -95,8 +98,8 @@ struct RenderContext {
     __device__ void rayStat(int type) const {
         atomicAdd(stats + type, 1);
     }
-    __device__ void maxStat(int type, uint64_t value) const {
-        atomicMax(stats + type, value);
+    __device__ void addStat(int type, uint64_t value) const {
+        atomicAdd(stats + type, value);
     }
 
     void initStats() {
@@ -120,7 +123,8 @@ struct RenderContext {
         std::cerr << " power < 0.01        : " << std::fixed << stats[NUM_RAYS_LOW_POWER] << std::endl;
         std::cerr << " exceeded max bounce : " << std::fixed << stats[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
         std::cerr << " russian roulette    : " << std::fixed << stats[NUM_RAYS_RUSSIAN_KILL] << std::endl;
-        std::cerr << " max travers. nodes  : " << std::fixed << stats[NUM_RAYS_MAX_TRAVERSED_NODES] << std::endl;
+        std::cerr << " both nodes hit      : " << std::fixed << stats[NUM_NODES_BOTH] << std::endl;
+        std::cerr << " single node hit     : " << std::fixed << stats[NUM_NODES_SINGLE] << std::endl;
         if (stats[NUM_RAYS_NAN] > 0)
             std::cerr << "*** " << stats[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
@@ -145,13 +149,11 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     float closest = t_max;
     unsigned int bitStack = 1;
 #ifdef BVH_COUNT
-    uint64_t traversed = 0;
+    uint64_t traversed_single = 0;
+    uint64_t traversed_both = 0;
 #endif
     while (idx) {
         if (idx < context.firstLeafIdx) { // internal node
-#ifdef BVH_COUNT
-            traversed += 2;
-#endif
             // load both children nodes
             int idx2 = idx << 1;
             bvh_node left = context.bvh[idx2];
@@ -162,9 +164,15 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             bool traverseRight = rightHit < closest;
             bool swap = rightHit < leftHit;
             if (traverseLeft && traverseRight) {
+#ifdef BVH_COUNT
+                traversed_both++;
+#endif
                 idx = idx2 + (swap ? 1 : 0);
                 bitStack = (bitStack << 1) + 1;
             } else if (traverseLeft || traverseRight) {
+#ifdef BVH_COUNT
+                traversed_single++;
+#endif
                 idx = idx2 + (swap ? 1 : 0);
                 bitStack = bitStack << 1;
             } else {
@@ -192,8 +200,8 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     }
 
 #ifdef BVH_COUNT
-    context.maxStat(NUM_RAYS_MAX_TRAVERSED_NODES, traversed);
-    rec.traversed = traversed;
+    context.addStat(NUM_NODES_BOTH, traversed_both);
+    context.addStat(NUM_NODES_SINGLE, traversed_single);
 #endif
     return closest;
 }
@@ -311,14 +319,8 @@ __device__ bool hit(const RenderContext& context, const path& p, float t_max, bo
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
         inters.texCoords[0] = (triHit.u * tri.texCoords[1 * 2 + 0] + triHit.v * tri.texCoords[2 * 2 + 0] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 0]);
         inters.texCoords[1] = (triHit.u * tri.texCoords[1 * 2 + 1] + triHit.v * tri.texCoords[2 * 2 + 1] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 1]);
-#ifdef BVH_COUNT
-        inters.traversed = triHit.traversed;
-#endif
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
-#ifdef BVH_COUNT
-        inters.traversed = triHit.traversed;
-#endif
         //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
         //    inters.objId = PLANE;
         //    inters.normal = context.floor.norm;
@@ -377,10 +379,6 @@ __device__ bool generateShadowRay(const RenderContext& context, path& p, const i
 __device__ void color(const RenderContext& context, path& p) {
     p.attenuation = vec3(1.0, 1.0, 1.0);
     p.color = vec3(0, 0, 0);
-#ifdef BVH_COUNT
-    const uint64_t maxTraversed = 1500;
-    const uint64_t targetBounce = 0;
-#endif
 #ifdef STATS
     bool fromMesh = false;
 #endif
@@ -407,20 +405,6 @@ __device__ void color(const RenderContext& context, path& p) {
 
             // constant sky color of (0.5, 0.5, 0.5)
             p.color += p.attenuation * vec3(0.5f, 0.5f, 0.5f);
-#ifdef BVH_COUNT
-            if (p.bounce == targetBounce) {
-                float t = fminf(1.0f, ((float)inters.traversed) / maxTraversed);
-                if (t <= 0.5f) {
-                    t *= 2; // [0, .5] -> [0, 1]
-                    p.color = (1 - t) * vec3(0, 0, 1) + t * vec3(0, 1, 0);
-                }
-                else {
-                    // [0.5, 1] -> [0, 1]
-                    t = (t - 0.5f) * 2;
-                    p.color = (1 - t) * vec3(0, 1, 0) + t * vec3(1, 0, 0);
-                }
-            }
-#endif // BVH_COUNT
             return;
         }
 
@@ -449,21 +433,6 @@ __device__ void color(const RenderContext& context, path& p) {
 #endif
 
         inters.inside = p.inside;
-#ifdef BVH_COUNT
-        if (p.bounce == targetBounce) {
-            float t = fminf(1.0f, ((float)inters.traversed) / maxTraversed);
-            if (t <= 0.5f) {
-                t *= 2; // [0, .5] -> [0, 1]
-                p.color = (1 - t) * vec3(0, 0, 1) + t * vec3(0, 1, 0);
-            }
-            else {
-                // [0.5, 1] -> [0, 1]
-                t = (t - 0.5f) * 2;
-                p.color = (1 - t) * vec3(0, 1, 0) + t * vec3(1, 0, 0);
-            }
-            return;
-        }
-#endif
         scatter_info scatter(inters);
         if (inters.objId == TRIMESH) {
             const material& mat = context.materials[inters.meshID];
