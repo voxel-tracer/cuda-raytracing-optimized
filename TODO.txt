@@ -533,7 +533,8 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
 - DONE measure coherence, active, and leaf metrics
 	(no shadows)
 				resolution		coherence	numpaths	active	leaf	numpaths/coherence(sigma)	(total/unique)				avg nodes per path
-	primary0 	320x400x64		   68,498	 8,192,000	93%		28%		119							1,857,954,013 / 27,124		226
+	primary0 	320x400x64		  110,012	 8,192,000	93%		28%		75							3,185,094,968 / 28,952		388
+
 	bounce 1	320x400x64		   33,952	 8,192,000	55%		10%		241							1,628,687,774 / 47,970
 	bounce 2	320x400x64		   48,627	 8,075,841	44%		 8%		166							2,355,322,304 / 49,966
 	bounce 3	320x400x64		   47,138	 7,982,478	43%		 8%		169							2,355,322,304 / 49,966
@@ -551,11 +552,25 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
 	leaf metric         : 51.267700
           1                 warp_execution_efficiency                  Warp Execution Efficiency      68.43%      68.43%      68.43%
           1         warp_nonpred_execution_efficiency   Warp Non-Predicated Execution Efficiency      65.02%      65.02%      65.02%
-	
-- redo all of my performance tests
- . start with coherence and active/leaf
- . recompute individual bounce times in spreadsheet to see if traversal is still biggest bottleneck
-
+- DONE redo my performance number collection for first 8 bounces (spreadsheet)
+ . traversal now accounts for +99%
+ . texture handling time is negligeable
+ . shadow rays traversal accounts for half rendering time
+- DONE collect active/leaf metrics for bounce 0/1
+								active	leaf
+	original (after dual fix)	
+		bounce 0				93%		28%
+		bounce 1				55%		10%
+	random sorting
+		bounce 0				93%		28%
+		bounce 1				47%		 8%
+	bitstack sorting
+		bounce 0				93%		28%
+		bounce 1				60%		10%
+	Morton code sorting
+		bounce 0				93%		28%
+		bounce 1				56%		10%
+		
 - SAH building should improve BVH quality and hopefully improve coherence as well
 - given that shadow rays are expensive it makes sense to use splitting to reduce ns overall but increase
   number of shadow rays per intersection.

@@ -10,7 +10,7 @@
 
 #include "kernels.h"
 
-#define STATS
+//#define STATS
 #define RUSSIAN_ROULETTE
 #define BVH
 #define SHADOW
@@ -19,7 +19,7 @@
 #define EPSILON 0.01f
 
 #define DUAL_NODES
-#define BVH_COUNT
+//#define BVH_COUNT
 
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
