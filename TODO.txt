@@ -525,9 +525,33 @@ PHASE II.3 OPTIMIZE BVH MEGA KERNEL FOR STAIRCASE SCENE
  . additionally we can use the bitstack to do a single back track to the next node that needs to be visited instead of multiple
    consecutive back tracks
  . for 320x400x64 render time went down from 65s to 32s YAY!
-
-- measure how many times both children need to be traversed vs a single one vs none
- . if 2nd measure (both children need to be traversed) is high then choosing the right order can improve performance
+- DONE measure how many times both children need to be traversed vs a single one vs none
+	both nodes hit      : 2,170,563,557
+	single node hit     : 9,214,922,831
+ . a smaller proportion of nodes has both children hit the ray, this may suggest a "good" BVH
+   can probably be improved with a proper SAH build
+- DONE measure coherence, active, and leaf metrics
+	(no shadows)
+				resolution		coherence	numpaths	active	leaf	numpaths/coherence(sigma)	(total/unique)				avg nodes per path
+	primary0 	320x400x64		   68,498	 8,192,000	93%		28%		119							1,857,954,013 / 27,124		226
+	bounce 1	320x400x64		   33,952	 8,192,000	55%		10%		241							1,628,687,774 / 47,970
+	bounce 2	320x400x64		   48,627	 8,075,841	44%		 8%		166							2,355,322,304 / 49,966
+	bounce 3	320x400x64		   47,138	 7,982,478	43%		 8%		169							2,355,322,304 / 49,966
+	primary0 	640x800x64		  434,010	32,768,000	95%		35%		75							
+	primary0 	640x800x32		  217,968	16,384,000	95%		35%		75					
+- DONE nvprof metrics
+	primary0
+          1                 warp_execution_efficiency                  Warp Execution Efficiency      47.73%      47.73%      47.73%
+          1         warp_nonpred_execution_efficiency   Warp Non-Predicated Execution Efficiency      45.26%      45.26%      45.26%
+	bounce 1
+          1                 warp_execution_efficiency                  Warp Execution Efficiency      20.67%      20.67%      20.67%
+          1         warp_nonpred_execution_efficiency   Warp Non-Predicated Execution Efficiency      19.64%      19.64%      19.64%
+- DONE primary 1
+	active metric       : 97.669705
+	leaf metric         : 51.267700
+          1                 warp_execution_efficiency                  Warp Execution Efficiency      68.43%      68.43%      68.43%
+          1         warp_nonpred_execution_efficiency   Warp Non-Predicated Execution Efficiency      65.02%      65.02%      65.02%
+	
 - redo all of my performance tests
  . start with coherence and active/leaf
  . recompute individual bounce times in spreadsheet to see if traversal is still biggest bottleneck
