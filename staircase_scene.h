@@ -173,6 +173,7 @@ bool setup_kernel_scene(const scene sc, kernel_scene& ksc) {
     }
 
     std::cerr << " there are " << m->numTris << " triangles" << ", and " << m->numBvhNodes << " bvh nodes" << std::endl;
+    std::cerr << " numPrimitivesPerNode " << numPrimitivesPerLeaf << std::endl;
     std::cerr << " bbox.min " << m->bounds.min << "\n bbox.max " << m->bounds.max << std::endl;
 
     ksc = { m, plane(), sc.materials, sc.numMaterials, sc.textures, sc.numTextures, numPrimitivesPerLeaf };
