@@ -1,14 +1,15 @@
 #include <iostream>
 #include <time.h>
 #include <float.h>
+#include <fstream>
 
 //#define CUBE
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-#define TINYOBJLOADER_IMPLEMENTATION 
-#include <tiny_obj_loader.h>
+//#define TINYOBJLOADER_IMPLEMENTATION 
+//#include <tiny_obj_loader.h>
 
 #include "kernels.h"
 

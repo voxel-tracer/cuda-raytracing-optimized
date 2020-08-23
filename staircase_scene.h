@@ -119,18 +119,19 @@ bool loadTexture(const std::string filename, stexture& tex) {
 
 bool load_scene(scene& sc) {
     stbi_set_flip_vertically_on_load(true);
+    std::string basePath = "C:\\Users\\adene\\models\\glsl-assets\\staircase\\textures\\";
 
     stexture* textures = new stexture[9];
     bool success = true;
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodFloor.png", textures[0]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Wallpaper.png", textures[1]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Woodpanel.png", textures[2]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting1.png", textures[3]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting2.png", textures[4]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Painting3.png", textures[5]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\WoodChair.png", textures[6]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\Fabric.png", textures[7]);
-    success = success && loadTexture("D:\\vstudio\\glsl-pathtracer\\GLSL-PathTracer\\bin\\assets\\staircase\\textures\\BrushedAluminium.png", textures[8]);
+    success = success && loadTexture(basePath + "WoodFloor.png", textures[0]);
+    success = success && loadTexture(basePath + "Wallpaper.png", textures[1]);
+    success = success && loadTexture(basePath + "Woodpanel.png", textures[2]);
+    success = success && loadTexture(basePath + "Painting1.png", textures[3]);
+    success = success && loadTexture(basePath + "Painting2.png", textures[4]);
+    success = success && loadTexture(basePath + "Painting3.png", textures[5]);
+    success = success && loadTexture(basePath + "WoodChair.png", textures[6]);
+    success = success && loadTexture(basePath + "Fabric.png", textures[7]);
+    success = success && loadTexture(basePath + "BrushedAluminium.png", textures[8]);
     if (!success) {
         std::cerr << "Failed to load textures" << std::endl;
         return false;
@@ -158,7 +159,7 @@ bool load_scene(scene& sc) {
     materials[18] = { material_type::DIFFUSE, vec3(), 0, 6 };                             // WoodLamp
     materials[19] = { material_type::DIFFUSE, vec3(), 0, 2 };                             // woodstairs
 
-    sc = { "D:\\models\\obj\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
+    sc = { "C:\\Users\\adene\\models\\BVH\\staircase.bvh" , yUp, 1, vec3(1,1,1), materials, 20, textures, 9 };
     return true;
 }
 
