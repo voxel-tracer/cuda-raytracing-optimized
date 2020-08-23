@@ -76,9 +76,10 @@ bool loadBVH(const char* input, mesh& m, int& numPrimitivesPerLeaf) {
     std::fstream in(input, std::ios::in | std::ios::binary);
 
     const char* HEADER = "BVH_00.03";
-    char* header = new char[sizeof(HEADER)];
-    in.read(header, sizeof(HEADER));
-    if (!strcmp(HEADER, header)) {
+    int headerLen = strlen(HEADER);
+    char* header = new char[headerLen];
+    in.read(header, headerLen);
+    if (strcmp(HEADER, header) != 0) {
         std::cerr << "invalid header " << header << std::endl;
         return false;
     }
