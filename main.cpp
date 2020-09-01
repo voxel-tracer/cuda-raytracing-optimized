@@ -3,13 +3,8 @@
 #include <float.h>
 #include <fstream>
 
-//#define CUBE
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-
-//#define TINYOBJLOADER_IMPLEMENTATION 
-//#include <tiny_obj_loader.h>
 
 #include "kernels.h"
 
@@ -22,19 +17,22 @@ float random_float(unsigned int& state) {
 
 #define RND (random_float(rand_state))
 
-int main() {
+int main(int argc, char** argv) {
     bool perf = false;
     bool fast = true;
     int nx = (!perf && !fast) ? 640 : (!perf ? 640 : 160);
     int ny = (!perf && !fast) ? 800 : (!perf ? 800 : 200);
-    int ns = (!perf && !fast) ? 1024 : (!perf ? 1024 : 4); //!perf ? (fast ? 64 : 1024) : 4;
+    int ns = (!perf && !fast) ? 1024 : (!perf ? 256 : 4); //!perf ? (fast ? 64 : 1024) : 4;
     int maxDepth = 64;
     int tx = 8;
     int ty = 8;
 
+    if (argc > 1)
+        maxDepth = strtol(argv[1], NULL, 10);
+
     std::cerr.imbue(std::locale(""));
-    std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
-    std::cerr << "in " << tx << "x" << ty << " blocks.\n";
+    std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel and max depth " << maxDepth;
+    std::cerr << " in " << tx << "x" << ty << " blocks.\n";
 
     camera cam = setup_camera(nx, ny);
 
