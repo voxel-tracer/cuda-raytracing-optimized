@@ -15,6 +15,7 @@ struct mat3x3 {
 struct intersection {
     unsigned int objId; // object that was intersected
     unsigned char meshID;
+    uint64_t triID;
     float t;
     vec3 p;
     vec3 normal; // always faces the ray
@@ -56,6 +57,7 @@ struct path {
     bool done = false;
 #ifdef PATH_DBG
     bool dbg = false;
+    uint64_t sampleId;
 #endif
 #ifdef SAVE_BITSTACK
     unsigned int bitstack = 0;
