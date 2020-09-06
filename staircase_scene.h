@@ -75,7 +75,7 @@ camera setup_camera(int nx, int ny) {
 bool loadBVH(const char* input, mesh& m, int& numPrimitivesPerLeaf) {
     std::fstream in(input, std::ios::in | std::ios::binary);
 
-    const char* HEADER = "BVH_00.03";
+    const char* HEADER = "BVH_00.04";
     int headerLen = strlen(HEADER)+1;
     char* header = new char[headerLen];
     in.read(header, headerLen);

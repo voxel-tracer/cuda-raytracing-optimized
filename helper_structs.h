@@ -80,18 +80,12 @@ struct triangle {
         v[1] = v1;
         v[2] = v2;
         meshID = mID;
-        update();
 
         for (auto i = 0; i < 6; i++)
             texCoords[i] = tc[i];
     }
 
-    void update() {
-        center = (v[0] + v[1] + v[2]) / 3;
-    }
-
     vec3 v[3];
-    vec3 center;
     float texCoords[6];
     unsigned char meshID;
 };
