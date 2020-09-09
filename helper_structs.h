@@ -5,6 +5,7 @@
 
 //#define PATH_DBG
 //#define BVH_COUNT
+#define COLOR_NUM_NODES
 
 typedef unsigned int rand_state;
 
@@ -27,6 +28,10 @@ struct intersection {
 #ifdef SAVE_BITSTACK
     unsigned int bitstack = 0;
 #endif
+#ifdef COLOR_NUM_NODES
+    uint64_t numNodes;
+#endif // COLOR_NUM_NODES
+
 
 };
 
@@ -178,6 +183,9 @@ struct tri_hit {
 #ifdef SAVE_BITSTACK
     unsigned int bitstack = 0;
 #endif
+#ifdef COLOR_NUM_NODES
+    uint64_t numNodes;
+#endif // COLOR_NUM_NODES
 };
 
 struct camera
