@@ -5,7 +5,7 @@
 
 //#define PATH_DBG
 //#define BVH_COUNT
-#define COLOR_NUM_NODES
+//#define COLOR_NUM_NODES
 
 typedef unsigned int rand_state;
 
