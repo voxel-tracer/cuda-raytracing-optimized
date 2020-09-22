@@ -21,6 +21,8 @@
 #define DUAL_NODES
 //#define BVH_COUNT
 
+#define USE_BVH_TEXTURE
+
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
@@ -68,9 +70,14 @@ struct RenderContext {
     vec3* fb;
 
     triangle* tris;
-    //uint32_t numTris;
+
+#ifdef USE_BVH_TEXTURE
+    float* d_bvh;
+    cudaTextureObject_t bvh_tex;
+#else
     bvh_node* bvh;
-    //uint32_t numBvhNodes;
+#endif // USE_BVH_TEXTURE
+
     uint32_t firstLeafIdx;
     uint32_t numPrimitivesPerLeaf = 5; //TODO load this from bin file
     bbox bounds;
@@ -156,10 +163,20 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
         if (idx < context.firstLeafIdx) { // internal node
             // load both children nodes
             int idx2 = idx << 1;
+#ifdef USE_BVH_TEXTURE
+            int float4_idx = idx * 3;
+            float4 bvh_a = tex1Dfetch<float4>(context.bvh_tex, float4_idx);
+            float4 bvh_b = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 1);
+            float4 bvh_c = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 2);
+
+            bvh_node left(bvh_a.x, bvh_a.y, bvh_a.z, bvh_a.w, bvh_b.x, bvh_b.y);
+            bvh_node right(bvh_b.z, bvh_b.w, bvh_c.x, bvh_c.y, bvh_c.z, bvh_c.w);
+#else
             bvh_node left = context.bvh[idx2];
+            bvh_node right = context.bvh[idx2 + 1];
+#endif // USE_BVH_TEXTURE
             float leftHit = hit_bbox_dist(left.min(), left.max(), r, closest);
             bool traverseLeft = leftHit < closest;
-            bvh_node right = context.bvh[idx2 + 1];
             float rightHit = hit_bbox_dist(right.min(), right.max(), r, closest);
             bool traverseRight = rightHit < closest;
             bool swap = rightHit < leftHit;
@@ -564,8 +581,36 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
 
     checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m->numTris * sizeof(triangle)));
     checkCudaErrors(cudaMemcpy(renderContext.tris, sc.m->tris, sc.m->numTris * sizeof(triangle), cudaMemcpyHostToDevice));
+
+#ifdef USE_BVH_TEXTURE
+    // copy bvh data to float array
+    checkCudaErrors(cudaMalloc((void**)&renderContext.d_bvh, sc.m->numBvhNodes * sizeof(bvh_node)));
+    checkCudaErrors(cudaMemcpy(renderContext.d_bvh, sc.m->bvh, sc.m->numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+
+    cudaResourceDesc texRes;
+    memset(&texRes, 0, sizeof(cudaResourceDesc));
+
+    texRes.resType = cudaResourceTypeLinear;
+    texRes.res.linear.devPtr = renderContext.d_bvh;
+    texRes.res.linear.sizeInBytes = sizeof(bvh_node) * sc.m->numBvhNodes;
+    texRes.res.linear.desc = cudaCreateChannelDesc<float4>();
+
+    cudaTextureDesc texDescr;
+    memset(&texDescr, 0, sizeof(cudaTextureDesc));
+
+    texDescr.normalizedCoords = false; // we access coordinates as is
+    texDescr.filterMode = cudaFilterModePoint; // return closest texel
+    texDescr.readMode = cudaReadModeElementType;
+
+    checkCudaErrors(cudaCreateTextureObject(&renderContext.bvh_tex, &texRes, &texDescr, NULL));
+#else
     checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, sc.m->numBvhNodes * sizeof(bvh_node)));
     checkCudaErrors(cudaMemcpy(renderContext.bvh, sc.m->bvh, sc.m->numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+#endif // USE_BVH_TEXTURE
+
+
+
+
     renderContext.firstLeafIdx = sc.m->numBvhNodes / 2;
     renderContext.bounds = sc.m->bounds;
 
@@ -623,6 +668,13 @@ cleanupRenderer() {
     checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(renderContext.fb));
     checkCudaErrors(cudaFree(renderContext.materials));
+#ifdef USE_BVH_TEXTURE
+    checkCudaErrors(cudaFree(renderContext.d_bvh));
+    checkCudaErrors(cudaDestroyTextureObject(renderContext.bvh_tex));
+#else
+    checkCudaErrors(cudaFree(renderContext.bvh));
+#endif // USE_BVH_TEXTURE
+
 
     cudaDeviceReset();
 }
