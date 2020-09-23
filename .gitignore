@@ -8,6 +8,7 @@
 *.sbk
 *.sorted
 *.bak
+*.ref
 
 v16
 x64
