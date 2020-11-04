@@ -136,8 +136,13 @@ struct RenderContext {
             std::cerr << "*** " << stats[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
 #else
+    uint64_t* unique;
+
     __device__ void rayStat(int type) const {}
-    void initStats() {}
+    void initStats() {
+        checkCudaErrors(cudaMallocManaged((void**)&unique, sizeof(uint64_t)));
+        unique[0] = 0;
+    }
     void printStats() const {}
 #endif
 };
@@ -298,6 +303,9 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
 #ifdef STATS
         if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
+#else
+        // adding this one line saves 5s of rendering time, no idea why!!!
+        atomicAdd(context.unique, 1);
 #endif
         return FLT_MAX;
     }
