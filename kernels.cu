@@ -63,7 +63,13 @@ enum OBJ_ID {
 #define NUM_RAYS_NAN                    15
 #define NUM_NODES_BOTH                  16
 #define NUM_NODES_SINGLE                17
-#define NUM_RAYS_SIZE                   18
+#define METRIC_NUM_INTERNAL             18
+#define METRIC_NUM_LEAVES               19
+#define METRIC_NUM_LEAF_HITS            20
+#define METRIC_MAX_NUM_INTERNAL         21
+#define METRIC_MAX_NUM_LEAVES           22
+#define METRIC_NUM_HIGH_LEAVES          23
+#define NUM_RAYS_SIZE                   24
 #endif
 
 struct RenderContext {
@@ -102,11 +108,14 @@ struct RenderContext {
 
 #ifdef STATS
     uint64_t* stats;
-    __device__ void rayStat(int type) const {
+    __device__ void incStat(int type) const {
         atomicAdd(stats + type, 1);
     }
-    __device__ void addStat(int type, uint64_t value) const {
+    __device__ void incStat(int type, int value) const {
         atomicAdd(stats + type, value);
+    }
+    __device__ void maxStat(int type, uint64_t value) const {
+        atomicMax(stats + type, value);
     }
 
     void initStats() {
@@ -114,31 +123,51 @@ struct RenderContext {
         memset(stats, 0, NUM_RAYS_SIZE * sizeof(uint64_t));
     }
     void printStats() const {
+        // we currently only track BVH metrics for primary and secondary rays but not shadow rays
+        // TODO track them for shadow rays as well
+        uint64_t numPrimary = stats[NUM_RAYS_PRIMARY];
+        uint64_t numSecondary = stats[NUM_RAYS_SECONDARY];
+        uint64_t total = numPrimary + numSecondary;
+
         std::cerr << "num rays:\n";
-        std::cerr << " primary             : " << std::fixed << stats[NUM_RAYS_PRIMARY] << std::endl;
-        std::cerr << " primary hit mesh    : " << std::fixed << stats[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
-        std::cerr << " primary nohit       : " << std::fixed << stats[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
-        std::cerr << " primary bb nohit    : " << std::fixed << stats[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
-        std::cerr << " secondary           : " << std::fixed << stats[NUM_RAYS_SECONDARY] << std::endl;
-        std::cerr << " secondary no hit    : " << std::fixed << stats[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
-        std::cerr << " secondary bb nohit  : " << std::fixed << stats[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
-        std::cerr << " secondary mesh      : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH] << std::endl;
-        std::cerr << " secondary mesh nohit: " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
-        std::cerr << " shadows             : " << std::fixed << stats[NUM_RAYS_SHADOWS] << std::endl;
-        std::cerr << " shadows nohit       : " << std::fixed << stats[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
-        std::cerr << " shadows bb nohit    : " << std::fixed << stats[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
-        std::cerr << " power < 0.01        : " << std::fixed << stats[NUM_RAYS_LOW_POWER] << std::endl;
-        std::cerr << " exceeded max bounce : " << std::fixed << stats[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
-        std::cerr << " russian roulette    : " << std::fixed << stats[NUM_RAYS_RUSSIAN_KILL] << std::endl;
-        std::cerr << " both nodes hit      : " << std::fixed << stats[NUM_NODES_BOTH] << std::endl;
-        std::cerr << " single node hit     : " << std::fixed << stats[NUM_NODES_SINGLE] << std::endl;
+        std::cerr << " primary                     : " << std::fixed << numPrimary << std::endl;
+        std::cerr << " primary hit mesh            : " << std::fixed << stats[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
+        std::cerr << " primary nohit               : " << std::fixed << stats[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " primary bb nohit            : " << std::fixed << stats[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
+        std::cerr << " secondary                   : " << std::fixed << numSecondary << std::endl;
+        std::cerr << " secondary no hit            : " << std::fixed << stats[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
+        std::cerr << " secondary bb nohit          : " << std::fixed << stats[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
+        std::cerr << " secondary mesh              : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH] << std::endl;
+        std::cerr << " secondary mesh nohit        : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
+        std::cerr << " shadows                     : " << std::fixed << stats[NUM_RAYS_SHADOWS] << std::endl;
+        std::cerr << " shadows nohit               : " << std::fixed << stats[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " shadows bb nohit            : " << std::fixed << stats[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
+        std::cerr << " power < 0.01                : " << std::fixed << stats[NUM_RAYS_LOW_POWER] << std::endl;
+        std::cerr << " exceeded max bounce         : " << std::fixed << stats[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
+        std::cerr << " russian roulette            : " << std::fixed << stats[NUM_RAYS_RUSSIAN_KILL] << std::endl;
+        std::cerr << " both nodes hit              : " << std::fixed << stats[NUM_NODES_BOTH] << std::endl;
+        std::cerr << " single node hit             : " << std::fixed << stats[NUM_NODES_SINGLE] << std::endl;
+
+        uint64_t numInternal = stats[METRIC_NUM_INTERNAL];
+        uint64_t numLeaves = stats[METRIC_NUM_LEAVES];
+        uint64_t numLeafHits = stats[METRIC_NUM_LEAF_HITS];
+        uint64_t avgPathSize = numInternal / total;
+        uint64_t avgLeafInters = numLeaves / total;
+        uint64_t avgLeafHits = numLeafHits / total;
+        std::cerr << " num internal nodes          : " << std::fixed << numInternal << std::endl;
+        std::cerr << " num leaf nodes              : " << std::fixed << numLeaves << std::endl;
+        std::cerr << " num leaf hits               : " << std::fixed << numLeafHits << std::endl;
+        std::cerr << " avg path size               : " << std::fixed << avgPathSize << std::endl;
+        std::cerr << " avg leaf intersections      : " << std::fixed << avgLeafInters << std::endl;
+        std::cerr << " avg leaf hits               : " << std::fixed << avgLeafHits << std::endl;
+        std::cerr << " max num internal            : " << std::fixed << stats[METRIC_MAX_NUM_INTERNAL] << std::endl;
+        std::cerr << " max num leaves              : " << std::fixed << stats[METRIC_MAX_NUM_LEAVES] << std::endl;
+        std::cerr << " num paths with large leaves : " << std::fixed << stats[METRIC_NUM_HIGH_LEAVES] << std::endl;
         if (stats[NUM_RAYS_NAN] > 0)
             std::cerr << "*** " << stats[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
 #else
     uint64_t* unique;
-
-    __device__ void rayStat(int type) const {}
     void initStats() {
         checkCudaErrors(cudaMallocManaged((void**)&unique, sizeof(uint64_t)));
         unique[0] = 0;
@@ -164,8 +193,16 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     uint64_t traversed_single = 0;
     uint64_t traversed_both = 0;
 #endif
+#ifdef STATS
+    uint64_t numLeaves = 0;
+    uint64_t numInternal = 0;
+#endif // STATS
+
     while (idx) {
         if (idx < context.firstLeafIdx) { // internal node
+#ifdef STATS
+            numInternal += 2;
+#endif // STATS
             // load both children nodes
             int idx2 = idx << 1;
 #ifdef USE_BVH_TEXTURE
@@ -201,6 +238,10 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 pop_bitstack(bitStack, idx);
             }
         } else { // leaf node
+#ifdef STATS
+            numLeaves+= context.numPrimitivesPerLeaf;
+            bool found = false;
+#endif
             int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
             for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
                 const triangle tri = context.tris[first + i];
@@ -210,7 +251,9 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 float hitT = triangleHit(tri, r, t_min, closest, u, v);
                 if (hitT < closest) {
                     if (isShadow) return 0.0f;
-
+#ifdef STATS
+                    found = true;
+#endif // STATS
                     closest = hitT;
                     rec.triId = first + i;
                     rec.u = u;
@@ -218,9 +261,19 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 }
             }
             pop_bitstack(bitStack, idx);
+#ifdef STATS
+            if (found) context.incStat(METRIC_NUM_LEAF_HITS);
+#endif // STATS
         }
     }
+#ifdef STATS
+    context.incStat(METRIC_NUM_INTERNAL, numInternal);
+    context.incStat(METRIC_NUM_LEAVES, numLeaves);
+    context.maxStat(METRIC_MAX_NUM_LEAVES, numLeaves);
+    context.maxStat(METRIC_MAX_NUM_INTERNAL, numInternal);
 
+    if (numLeaves > 199) context.incStat(METRIC_NUM_HIGH_LEAVES);
+#endif // STATS
 #ifdef BVH_COUNT
     context.addStat(NUM_NODES_BOTH, traversed_both);
     context.addStat(NUM_NODES_SINGLE, traversed_single);
@@ -301,8 +354,8 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
     if (!hit_bbox(context.bounds.min, context.bounds.max, r, t_max)) {
 #ifdef STATS
-        if (isShadow) context.rayStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
-        else context.rayStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
+        if (isShadow) context.incStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
+        else context.incStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
 #else
         // adding this one line saves 5s of rendering time, no idea why!!!
         atomicAdd(context.unique, 1);
@@ -410,9 +463,9 @@ __device__ void color(const RenderContext& context, path& p) {
     for (p.bounce = 0; p.bounce < context.maxDepth; p.bounce++) {
 #ifdef STATS
         bool primary = p.bounce == 0;
-        context.rayStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
-        if (fromMesh) context.rayStat(NUM_RAYS_SECONDARY_MESH);
-        if (p.attenuation.length() < 0.01f) context.rayStat(NUM_RAYS_LOW_POWER);
+        context.incStat(primary ? NUM_RAYS_PRIMARY : NUM_RAYS_SECONDARY);
+        if (fromMesh) context.incStat(NUM_RAYS_SECONDARY_MESH);
+        if (p.attenuation.length() < 0.01f) context.incStat(NUM_RAYS_LOW_POWER);
 #endif
         intersection inters;
         if (!hit(context, p, FLT_MAX, false, inters)) {
@@ -420,8 +473,8 @@ __device__ void color(const RenderContext& context, path& p) {
             if (p.dbg) printf("bounce %d: NO_HIT\n", p.bounce);
 #endif
 #ifdef STATS
-            if (primary) context.rayStat(NUM_RAYS_PRIMARY_NOHITS);
-            else context.rayStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
+            if (primary) context.incStat(NUM_RAYS_PRIMARY_NOHITS);
+            else context.incStat(fromMesh ? NUM_RAYS_SECONDARY_MESH_NOHIT : NUM_RAYS_SECONDARY_NOHIT);
 #endif
             // sky color
             //float t = 0.5f * (p.rayDir.y() + 1.0f);
@@ -435,8 +488,8 @@ __device__ void color(const RenderContext& context, path& p) {
 
 #ifdef STATS
         fromMesh = (inters.objId == TRIMESH);
-        if (primary && !fromMesh) context.rayStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
-        if (primary && fromMesh) context.rayStat(NUM_RAYS_PRIMARY_HIT_MESH);
+        if (primary && !fromMesh) context.incStat(NUM_RAYS_PRIMARY_NOHITS); // primary didn't intersect mesh, only floor
+        if (primary && fromMesh) context.incStat(NUM_RAYS_PRIMARY_HIT_MESH);
 #endif
         if (inters.objId == LIGHT) {
             // only specular rays can intersect the light
@@ -503,14 +556,14 @@ __device__ void color(const RenderContext& context, path& p) {
             if (p.dbg) printf("bounce %d: SHADOW\n", p.bounce);
 #endif
 #ifdef STATS
-            context.rayStat(NUM_RAYS_SHADOWS);
+            context.incStat(NUM_RAYS_SHADOWS);
 #endif
             if (!hit(context, p, lightDist, true, inters)) {
 #ifdef PATH_DBG
                 if (p.dbg) printf("bounce %d: SHADOW NO HIT\n", p.bounce);
 #endif
 #ifdef STATS
-                context.rayStat(NUM_RAYS_SHADOWS_NOHITS);
+                context.incStat(NUM_RAYS_SHADOWS_NOHITS);
 #endif
                 // intersection point is illuminated by the light
                 p.color += p.lightContribution;
@@ -526,7 +579,7 @@ __device__ void color(const RenderContext& context, path& p) {
                 if (p.dbg) printf("bounce %d: RUSSIAN ROULETTE BREAK\n", p.bounce);
 #endif
 #ifdef STATS
-                context.rayStat(NUM_RAYS_RUSSIAN_KILL);
+                context.incStat(NUM_RAYS_RUSSIAN_KILL);
 #endif
                 return;
             }
@@ -536,7 +589,7 @@ __device__ void color(const RenderContext& context, path& p) {
     }
     // exceeded recursion
 #ifdef STATS
-    context.rayStat(NUM_RAYS_EXCEED_MAX_BOUNCE);
+    context.incStat(NUM_RAYS_EXCEED_MAX_BOUNCE);
 #endif
 }
 
@@ -565,7 +618,7 @@ __global__ void render(const RenderContext context) {
         // once color() is done, p.color will contain all the light received through p
         col += p.color;
 #ifdef STATS
-        if (isnan(p.color)) context.rayStat(NUM_RAYS_NAN);
+        if (isnan(p.color)) context.incStat(NUM_RAYS_NAN);
 #endif
     }
     // color is specific to the pixel being traced, 
