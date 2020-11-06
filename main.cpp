@@ -61,7 +61,7 @@ bool loadReference(const std::string file, vec3* reference, int nx, int ny) {
 
 int main(int argc, char** argv) {
     bool perf = false;
-    bool fast = false;
+    bool fast = true;
     int nx = (!perf && !fast) ? 640 : (!perf ? 640 : 160);
     int ny = (!perf && !fast) ? 800 : (!perf ? 800 : 200);
     int ns = (!perf && !fast) ? 1024 : (!perf ? 256 : 4); //!perf ? (fast ? 64 : 1024) : 4;

@@ -45,6 +45,9 @@ enum OBJ_ID {
 };
 
 #ifdef STATS
+#define LARGE_LEAF      199
+#define LARGE_INTERNAL  1500
+
 #define NUM_RAYS_PRIMARY                0
 #define NUM_RAYS_PRIMARY_HIT_MESH       1
 #define NUM_RAYS_PRIMARY_NOHITS         2
@@ -68,8 +71,10 @@ enum OBJ_ID {
 #define METRIC_NUM_LEAF_HITS            20
 #define METRIC_MAX_NUM_INTERNAL         21
 #define METRIC_MAX_NUM_LEAVES           22
-#define METRIC_NUM_HIGH_LEAVES          23
-#define NUM_RAYS_SIZE                   24
+#define METRIC_MAX_LEAF_HITS            23
+#define METRIC_NUM_HIGH_LEAVES          24
+#define METRIC_NUM_HIGH_NODES           25
+#define NUM_RAYS_SIZE                   26
 #endif
 
 struct RenderContext {
@@ -123,24 +128,29 @@ struct RenderContext {
         memset(stats, 0, NUM_RAYS_SIZE * sizeof(uint64_t));
     }
     void printStats() const {
-        // we currently only track BVH metrics for primary and secondary rays but not shadow rays
-        // TODO track them for shadow rays as well
+        // total is used to compute average num internal nodes per path
         uint64_t numPrimary = stats[NUM_RAYS_PRIMARY];
         uint64_t numSecondary = stats[NUM_RAYS_SECONDARY];
-        uint64_t total = numPrimary + numSecondary;
+        uint64_t numShadows = stats[NUM_RAYS_SHADOWS];
+        uint64_t total = numPrimary + numSecondary + numShadows;
+        // compute total excluding nohits to properly compute average leaf nodes per path
+        uint64_t numPrimaryNoHits = stats[NUM_RAYS_PRIMARY_NOHITS];
+        uint64_t numSecondaryNoHits = stats[NUM_RAYS_SECONDARY_NOHIT];
+        uint64_t numShadowsNoHits = stats[NUM_RAYS_SHADOWS_NOHITS];
+        uint64_t totalHits = total - numPrimaryNoHits - numSecondaryNoHits - numShadowsNoHits;
 
         std::cerr << "num rays:\n";
         std::cerr << " primary                     : " << std::fixed << numPrimary << std::endl;
         std::cerr << " primary hit mesh            : " << std::fixed << stats[NUM_RAYS_PRIMARY_HIT_MESH] << std::endl;
-        std::cerr << " primary nohit               : " << std::fixed << stats[NUM_RAYS_PRIMARY_NOHITS] << std::endl;
+        std::cerr << " primary nohit               : " << std::fixed << numPrimaryNoHits << std::endl;
         std::cerr << " primary bb nohit            : " << std::fixed << stats[NUM_RAYS_PRIMARY_BBOX_NOHITS] << std::endl;
         std::cerr << " secondary                   : " << std::fixed << numSecondary << std::endl;
-        std::cerr << " secondary no hit            : " << std::fixed << stats[NUM_RAYS_SECONDARY_NOHIT] << std::endl;
+        std::cerr << " secondary no hit            : " << std::fixed << numSecondaryNoHits << std::endl;
         std::cerr << " secondary bb nohit          : " << std::fixed << stats[NUM_RAYS_SECONDARY_BBOX_NOHIT] << std::endl;
         std::cerr << " secondary mesh              : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH] << std::endl;
         std::cerr << " secondary mesh nohit        : " << std::fixed << stats[NUM_RAYS_SECONDARY_MESH_NOHIT] << std::endl;
-        std::cerr << " shadows                     : " << std::fixed << stats[NUM_RAYS_SHADOWS] << std::endl;
-        std::cerr << " shadows nohit               : " << std::fixed << stats[NUM_RAYS_SHADOWS_NOHITS] << std::endl;
+        std::cerr << " shadows                     : " << std::fixed << numShadows << std::endl;
+        std::cerr << " shadows nohit               : " << std::fixed << numShadowsNoHits << std::endl;
         std::cerr << " shadows bb nohit            : " << std::fixed << stats[NUM_RAYS_SHADOWS_BBOX_NOHITS] << std::endl;
         std::cerr << " power < 0.01                : " << std::fixed << stats[NUM_RAYS_LOW_POWER] << std::endl;
         std::cerr << " exceeded max bounce         : " << std::fixed << stats[NUM_RAYS_EXCEED_MAX_BOUNCE] << std::endl;
@@ -153,7 +163,7 @@ struct RenderContext {
         uint64_t numLeafHits = stats[METRIC_NUM_LEAF_HITS];
         uint64_t avgPathSize = numInternal / total;
         uint64_t avgLeafInters = numLeaves / total;
-        uint64_t avgLeafHits = numLeafHits / total;
+        float avgLeafHits = float(numLeafHits) / totalHits;
         std::cerr << " num internal nodes          : " << std::fixed << numInternal << std::endl;
         std::cerr << " num leaf nodes              : " << std::fixed << numLeaves << std::endl;
         std::cerr << " num leaf hits               : " << std::fixed << numLeafHits << std::endl;
@@ -162,7 +172,9 @@ struct RenderContext {
         std::cerr << " avg leaf hits               : " << std::fixed << avgLeafHits << std::endl;
         std::cerr << " max num internal            : " << std::fixed << stats[METRIC_MAX_NUM_INTERNAL] << std::endl;
         std::cerr << " max num leaves              : " << std::fixed << stats[METRIC_MAX_NUM_LEAVES] << std::endl;
+        std::cerr << " max leaf hits               : " << std::fixed << stats[METRIC_MAX_LEAF_HITS] << std::endl;
         std::cerr << " num paths with large leaves : " << std::fixed << stats[METRIC_NUM_HIGH_LEAVES] << std::endl;
+        std::cerr << " num paths with large nodes  : " << std::fixed << stats[METRIC_NUM_HIGH_NODES] << std::endl;
         if (stats[NUM_RAYS_NAN] > 0)
             std::cerr << "*** " << stats[NUM_RAYS_NAN] << " NaNs detected" << std::endl;
     }
@@ -177,6 +189,21 @@ struct RenderContext {
 };
 
 RenderContext renderContext;
+#ifdef STATS
+__device__ void updateBvhStats(const RenderContext& context, uint64_t numInternal, uint64_t numLeaves, uint64_t numLeafHits) {
+    context.incStat(METRIC_NUM_INTERNAL, numInternal);
+    context.incStat(METRIC_NUM_LEAVES, numLeaves);
+    context.maxStat(METRIC_MAX_NUM_LEAVES, numLeaves);
+    context.maxStat(METRIC_MAX_NUM_INTERNAL, numInternal);
+
+    context.incStat(METRIC_NUM_LEAF_HITS, numLeafHits);
+    context.maxStat(METRIC_MAX_LEAF_HITS, numLeafHits);
+
+    if (numLeaves > LARGE_LEAF) context.incStat(METRIC_NUM_HIGH_LEAVES);
+    if (numInternal > LARGE_INTERNAL) context.incStat(METRIC_NUM_HIGH_NODES);
+}
+#endif // STATS
+
 #ifdef DUAL_NODES
 
 __device__ void pop_bitstack(unsigned int& bitStack, int& idx) {
@@ -196,6 +223,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #ifdef STATS
     uint64_t numLeaves = 0;
     uint64_t numInternal = 0;
+    uint64_t numLeafHits = 0;
 #endif // STATS
 
     while (idx) {
@@ -240,7 +268,6 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
         } else { // leaf node
 #ifdef STATS
             numLeaves+= context.numPrimitivesPerLeaf;
-            bool found = false;
 #endif
             int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
             for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
@@ -250,10 +277,15 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 float u, v;
                 float hitT = triangleHit(tri, r, t_min, closest, u, v);
                 if (hitT < closest) {
-                    if (isShadow) return 0.0f;
 #ifdef STATS
-                    found = true;
+                    numLeafHits++;
 #endif // STATS
+                    if (isShadow) {
+#ifdef STATS
+                        updateBvhStats(context, numInternal, numLeaves, numLeafHits);
+#endif // STATS
+                        return 0.0f;
+                    }
                     closest = hitT;
                     rec.triId = first + i;
                     rec.u = u;
@@ -261,18 +293,10 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 }
             }
             pop_bitstack(bitStack, idx);
-#ifdef STATS
-            if (found) context.incStat(METRIC_NUM_LEAF_HITS);
-#endif // STATS
         }
     }
 #ifdef STATS
-    context.incStat(METRIC_NUM_INTERNAL, numInternal);
-    context.incStat(METRIC_NUM_LEAVES, numLeaves);
-    context.maxStat(METRIC_MAX_NUM_LEAVES, numLeaves);
-    context.maxStat(METRIC_MAX_NUM_INTERNAL, numInternal);
-
-    if (numLeaves > 199) context.incStat(METRIC_NUM_HIGH_LEAVES);
+    updateBvhStats(context, numInternal, numLeaves, numLeafHits);
 #endif // STATS
 #ifdef BVH_COUNT
     context.addStat(NUM_NODES_BOTH, traversed_both);
