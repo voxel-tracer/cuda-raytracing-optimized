@@ -10,7 +10,7 @@
 
 #include "kernels.h"
 
-//#define STATS
+#define STATS
 #define RUSSIAN_ROULETTE
 #define SHADOW
 #define TEXTURES
@@ -185,17 +185,17 @@ struct RenderContext {
 
 RenderContext renderContext;
 #ifdef STATS
-__device__ void updateBvhStats(const RenderContext& context, uint64_t numInternal, uint64_t numLeaves, uint64_t numLeafHits) {
-    context.incStat(METRIC_NUM_INTERNAL, numInternal);
-    context.incStat(METRIC_NUM_LEAVES, numLeaves);
-    context.maxStat(METRIC_MAX_NUM_LEAVES, numLeaves);
-    context.maxStat(METRIC_MAX_NUM_INTERNAL, numInternal);
+__device__ void updateBvhStats(const RenderContext& context, uint64_t numNodes, uint64_t numPrimitives, uint64_t numPrimHits) {
+    context.incStat(METRIC_NUM_INTERNAL, numNodes);
+    context.incStat(METRIC_NUM_LEAVES, numPrimitives);
+    context.maxStat(METRIC_MAX_NUM_LEAVES, numPrimitives);
+    context.maxStat(METRIC_MAX_NUM_INTERNAL, numNodes);
 
-    context.incStat(METRIC_NUM_LEAF_HITS, numLeafHits);
-    context.maxStat(METRIC_MAX_LEAF_HITS, numLeafHits);
+    context.incStat(METRIC_NUM_LEAF_HITS, numPrimHits);
+    context.maxStat(METRIC_MAX_LEAF_HITS, numPrimHits);
 
-    if (numLeaves > LARGE_LEAF) context.incStat(METRIC_NUM_HIGH_LEAVES);
-    if (numInternal > LARGE_INTERNAL) context.incStat(METRIC_NUM_HIGH_NODES);
+    if (numPrimitives > LARGE_LEAF) context.incStat(METRIC_NUM_HIGH_LEAVES);
+    if (numNodes > LARGE_INTERNAL) context.incStat(METRIC_NUM_HIGH_NODES);
 }
 #endif // STATS
 
@@ -311,8 +311,17 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     
     float closest = t_max;
 
+#ifdef STATS
+    uint64_t numPrimitives = 0;
+    uint64_t numNodes = 0;
+    uint64_t numPrimHits = 0;
+#endif // STATS
+
     while (true) {
         const LinearBVHNode* node = &context.nodes[currentNodeIndex];
+#ifdef STATS
+        numNodes++;
+#endif // STATS
 
         // Check ray against BVH node
         if (hit_bbox_dist(node->bounds.pMin, node->bounds.pMax, r, closest) < closest) {
@@ -321,8 +330,17 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 for (int i = 0; i < node->nPrimitives; i++) {
                     float u, v;
                     float hitT = triangleHit(context.tris[node->primitivesOffset + i], r, t_min, closest, u, v);
+#ifdef STATS
+                    numPrimitives++;
+#endif // STATS
                     if (hitT < closest) {
+#ifdef STATS
+                        numPrimHits++;
+#endif // STATS
                         if (isShadow) {
+#ifdef STATS
+                            updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
+#endif // STATS
                             return 0.0f;
                         }
                         closest = hitT;
@@ -348,6 +366,9 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             currentNodeIndex = nodesToVisit[--toVisitOffset];
         }
     }
+#ifdef STATS
+    updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
+#endif // STATS
     return closest;
 }
 #endif
