@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../bvh-builder/bvh_io.h"
+
 const mat3x3 xUp = {
     vec3(0,-1,0),
     vec3(1,0,0),
@@ -72,34 +74,6 @@ camera setup_camera(int nx, int ny) {
         dist_to_focus);
 }
 
-bool loadBVH(const char* input, mesh& m, int& numPrimitivesPerLeaf) {
-    std::fstream in(input, std::ios::in | std::ios::binary);
-
-    const char* HEADER = "BVH_00.04";
-    int headerLen = strlen(HEADER)+1;
-    char* header = new char[headerLen];
-    in.read(header, headerLen);
-    if (strcmp(HEADER, header) != 0) {
-        std::cerr << "invalid header " << header << std::endl;
-        return false;
-    }
-
-    in.read((char*)&m.numTris, sizeof(int));
-    m.tris = new triangle[m.numTris];
-    in.read((char*)m.tris, sizeof(triangle) * m.numTris);
-
-    in.read((char*)&m.numBvhNodes, sizeof(int));
-    m.bvh = new bvh_node[m.numBvhNodes];
-    in.read((char*)m.bvh, sizeof(bvh_node) * m.numBvhNodes);
-
-    in.read((char*)&m.bounds.min, sizeof(vec3));
-    in.read((char*)&m.bounds.max, sizeof(vec3));
-
-    in.read((char*)&numPrimitivesPerLeaf, sizeof(int));
-
-    return true;
-}
-
 bool loadTexture(const std::string filename, stexture& tex) {
     int width, height, nrChannels;
     // read image as RGB regardless of file format
@@ -168,15 +142,15 @@ bool setup_kernel_scene(const scene sc, kernel_scene& ksc) {
     mesh* m = new mesh();
     int numPrimitivesPerLeaf = 0;
 
-    if (!loadBVH(sc.filename, *m, numPrimitivesPerLeaf)) {
+    if (!loadBVH(sc.filename, m->tris, m->nodes, &numPrimitivesPerLeaf)) {
         std::cerr << "Failed to load bvh file" << std::endl;
         std::cerr.flush();
         return false;
     }
 
-    std::cerr << " there are " << m->numTris << " triangles" << ", and " << m->numBvhNodes << " bvh nodes" << std::endl;
+    std::cerr << " there are " << m->tris.size() << " triangles" << ", and " << m->nodes.size() << " bvh nodes" << std::endl;
     std::cerr << " numPrimitivesPerNode " << numPrimitivesPerLeaf << std::endl;
-    std::cerr << " bbox.min " << m->bounds.min << "\n bbox.max " << m->bounds.max << std::endl;
+    std::cerr << " bbox.min " << m->nodes[0].bounds.pMin << "\n bbox.max " << m->nodes[0].bounds.pMax << std::endl;
 
     ksc = { m, plane(), sc.materials, sc.numMaterials, sc.textures, sc.numTextures, numPrimitivesPerLeaf };
 

@@ -12,16 +12,15 @@
 
 //#define STATS
 #define RUSSIAN_ROULETTE
-#define BVH
 #define SHADOW
 #define TEXTURES
 
 #define EPSILON 0.01f
 
-#define DUAL_NODES
+//#define DUAL_NODES
 //#define BVH_COUNT
 
-#define USE_BVH_TEXTURE
+//#define USE_BVH_TEXTURE
 
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
@@ -80,18 +79,14 @@ enum OBJ_ID {
 struct RenderContext {
     vec3* fb;
 
-    triangle* tris;
+    LinearTriangle* tris;
 
 #ifdef USE_BVH_TEXTURE
     float* d_bvh;
     cudaTextureObject_t bvh_tex;
 #else
-    bvh_node* bvh;
+    LinearBVHNode* nodes;
 #endif // USE_BVH_TEXTURE
-
-    uint32_t firstLeafIdx;
-    uint32_t numPrimitivesPerLeaf = 5; //TODO load this from bin file
-    bbox bounds;
 
     plane floor;
 
@@ -227,7 +222,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #endif // STATS
 
     while (idx) {
-        if (idx < context.firstLeafIdx) { // internal node
+        if (idx < context.firstLeafIdx) { // TODO we need to keep a flag if previously loaded children were leaf nodes (nPrimitives == 0)
 #ifdef STATS
             numInternal += 2;
 #endif // STATS
@@ -242,12 +237,12 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             bvh_node left(bvh_a.x, bvh_a.y, bvh_a.z, bvh_a.w, bvh_b.x, bvh_b.y);
             bvh_node right(bvh_b.z, bvh_b.w, bvh_c.x, bvh_c.y, bvh_c.z, bvh_c.w);
 #else
-            bvh_node left = context.bvh[idx2];
-            bvh_node right = context.bvh[idx2 + 1];
+            LinearBVHNode left = context.bvh[idx2];
+            LinearBVHNode right = context.bvh[idx2 + 1];
 #endif // USE_BVH_TEXTURE
-            float leftHit = hit_bbox_dist(left.min(), left.max(), r, closest);
+            float leftHit = hit_bbox_dist(left.bounds.pMin, left.bounds.pMax, r, closest);
             bool traverseLeft = leftHit < closest;
-            float rightHit = hit_bbox_dist(right.min(), right.max(), r, closest);
+            float rightHit = hit_bbox_dist(right.bounds.pMin, right.bounds.pMax, r, closest);
             bool traverseRight = rightHit < closest;
             bool swap = rightHit < leftHit;
             if (traverseLeft && traverseRight) {
@@ -271,7 +266,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #endif
             int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
             for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
-                const triangle tri = context.tris[first + i];
+                const LinearTriangle tri = context.tris[first + i];
                 if (isinf(tri.v[0].x()))
                     break; // we reached the end of the primitives buffer
                 float u, v;
@@ -292,7 +287,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                     rec.v = v;
                 }
             }
-            pop_bitstack(bitStack, idx);
+            pop_bitstack(bitStack, idx); // TODO reset leaf flag if this call didn't move to sibling node
         }
     }
 #ifdef STATS
@@ -307,76 +302,59 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #else
 
 __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
-    bool down = true;
-    int idx = 1;
-    float closest = t_max;
-    unsigned int bitStack = 0;
-#ifdef BVH_COUNT
-    uint64_t traversed = 0;
-#endif
-    while (true) {
-        if (down) {
-            bvh_node node = context.bvh[idx];
-#ifdef BVH_COUNT
-            traversed++;
-#endif
-            if (hit_bbox(node.min(), node.max(), r, closest)) {
-                if (idx >= context.firstLeafIdx) { // leaf node
-                    int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
-                    for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
-                        const triangle tri = context.tris[first + i];
-                        if (isinf(tri.v[0].x()))
-                            break; // we reached the end of the primitives buffer
-                        float u, v;
-                        float hitT = triangleHit(tri, r, t_min, closest, u, v);
-                        if (hitT < closest) {
-                            if (isShadow) return 0.0f;
+    vec3 invDir(1.0f / r.direction().x(), 1.0f / r.direction().y(), 1.0f / r.direction().z());
+    int dirIsNeg[3] = { invDir[0] < 0, invDir[1] < 0, invDir[2] < 0 };
 
-                            closest = hitT;
-                            rec.triId = first + i;
-                            rec.u = u;
-                            rec.v = v;
+    // Follow ray through BVH nodes to find primitive intersections
+    int toVisitOffset = 0, currentNodeIndex = 0;
+    int nodesToVisit[64];
+    
+    float closest = t_max;
+
+    while (true) {
+        const LinearBVHNode* node = &context.nodes[currentNodeIndex];
+
+        // Check ray against BVH node
+        if (hit_bbox_dist(node->bounds.pMin, node->bounds.pMax, r, closest) < closest) {
+            if (node->nPrimitives > 0) {
+                // Intersect ray with primitives in leaf BVH node
+                for (int i = 0; i < node->nPrimitives; i++) {
+                    float u, v;
+                    float hitT = triangleHit(context.tris[node->primitivesOffset + i], r, t_min, closest, u, v);
+                    if (hitT < closest) {
+                        if (isShadow) {
+                            return 0.0f;
                         }
+                        closest = hitT;
+                        rec.triId = node->primitivesOffset + i;
+                        rec.u = u;
+                        rec.v = v;
                     }
-                    down = false;
                 }
-                else { // internal node
-                 // current -> left or right
-                    const int childIdx = signbit(r.direction()[node.split_axis()]); // 0=left, 1=right
-                    bitStack = (bitStack << 1) + childIdx; // push current child idx in the stack
-                    idx = (idx << 1) + childIdx;
+                if (toVisitOffset == 0) break;
+                currentNodeIndex = nodesToVisit[--toVisitOffset];
+            } else {
+                // Put the far BVH node on nodesToVisit stack, advance to near node
+                if (dirIsNeg[node->axis]) {
+                    nodesToVisit[toVisitOffset++] = currentNodeIndex + 1;
+                    currentNodeIndex = node->secondChildOffset;
+                } else {
+                    nodesToVisit[toVisitOffset++] = node->secondChildOffset;
+                    currentNodeIndex = currentNodeIndex + 1;
                 }
             }
-            else { // ray didn't intersect the node, backtrack
-                down = false;
-            }
-        }
-        else if (idx == 1) { // we backtracked up to the root node
-            break;
-        }
-        else { // back tracking
-            const int currentChildIdx = bitStack & 1;
-            if ((idx & 1) == currentChildIdx) { // node == current child, visit sibling
-                idx += -2 * currentChildIdx + 1; // node = node.sibling
-                down = true;
-            }
-            else { // we visited both siblings, backtrack
-                bitStack = bitStack >> 1;
-                idx = idx >> 1; // node = node.parent
-            }
+        } else {
+            if (toVisitOffset == 0) break;
+            currentNodeIndex = nodesToVisit[--toVisitOffset];
         }
     }
-
-#ifdef BVH_COUNT
-    context.maxStat(NUM_RAYS_MAX_TRAVERSED_NODES, traversed);
-    rec.traversed = traversed;
-#endif
     return closest;
 }
 #endif
 
 __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
-    if (!hit_bbox(context.bounds.min, context.bounds.max, r, t_max)) {
+    // TODO not really needed as it is equivalent to intersecting first node of BVH tree
+    if (!hit_bbox(context.nodes[0].bounds.pMin, context.nodes[0].bounds.pMax, r, t_max)) {
 #ifdef STATS
         if (isShadow) context.incStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.incStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
@@ -387,24 +365,7 @@ __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min
         return FLT_MAX;
     }
 
-#ifdef BVH
     return hitBvh(r, context, t_min, t_max, rec, isShadow);
-#else
-    float closest = FLT_MAX;
-    for (uint32_t i = 0; i < context.numTris; i++) {
-        float u, v;
-        float hitT = triangleHit(context.tris[i], r, t_min, closest, u, v);
-        if (hitT < FLT_MAX) {
-            if (isShadow) return 0.0f;
-
-            closest = hitT;
-            rec.triId = i;
-            rec.u = u;
-            rec.v = v;
-        }
-    }
-    return closest;
-#endif // BVH
 }
 
 __device__ bool hit(const RenderContext& context, const path& p, float t_max, bool isShadow, intersection &inters) {
@@ -416,18 +377,13 @@ __device__ bool hit(const RenderContext& context, const path& p, float t_max, bo
         if (isShadow) return true; // we don't need to compute the intersection details for shadow rays
 
         inters.objId = TRIMESH;
-        triangle tri = context.tris[triHit.triId];
+        LinearTriangle tri = context.tris[triHit.triId];
         inters.meshID = tri.meshID;
         inters.normal = unit_vector(cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]));
         inters.texCoords[0] = (triHit.u * tri.texCoords[1 * 2 + 0] + triHit.v * tri.texCoords[2 * 2 + 0] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 0]);
         inters.texCoords[1] = (triHit.u * tri.texCoords[1 * 2 + 1] + triHit.v * tri.texCoords[2 * 2 + 1] + (1 - triHit.u - triHit.v) * tri.texCoords[0 * 2 + 1]);
     } else {
         if (isShadow) return false; // shadow rays only care about the main triangle mesh
-        //if ((inters.t = planeHit(context.floor, r, EPSILON, FLT_MAX)) < FLT_MAX) {
-        //    inters.objId = PLANE;
-        //    inters.normal = context.floor.norm;
-        //}
-        //else 
         if (p.specular && sphereHit(context.light, r, EPSILON, t_max) < t_max) { // specular rays should intersect with the light
             inters.objId = LIGHT;
             return true; // we don't need to compute p and update normal to face the ray
@@ -664,8 +620,8 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
     *fb = renderContext.fb;
 
-    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m->numTris * sizeof(triangle)));
-    checkCudaErrors(cudaMemcpy(renderContext.tris, sc.m->tris, sc.m->numTris * sizeof(triangle), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.tris, sc.m->tris.size() * sizeof(LinearTriangle)));
+    checkCudaErrors(cudaMemcpy(renderContext.tris, &(sc.m->tris[0]), sc.m->tris.size() * sizeof(LinearTriangle), cudaMemcpyHostToDevice));
 
 #ifdef USE_BVH_TEXTURE
     // copy bvh data to float array
@@ -689,15 +645,9 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
 
     checkCudaErrors(cudaCreateTextureObject(&renderContext.bvh_tex, &texRes, &texDescr, NULL));
 #else
-    checkCudaErrors(cudaMalloc((void**)&renderContext.bvh, sc.m->numBvhNodes * sizeof(bvh_node)));
-    checkCudaErrors(cudaMemcpy(renderContext.bvh, sc.m->bvh, sc.m->numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.nodes, sc.m->nodes.size() * sizeof(LinearBVHNode)));
+    checkCudaErrors(cudaMemcpy(renderContext.nodes, &(sc.m->nodes[0]), sc.m->nodes.size() * sizeof(LinearBVHNode), cudaMemcpyHostToDevice));
 #endif // USE_BVH_TEXTURE
-
-
-
-
-    renderContext.firstLeafIdx = sc.m->numBvhNodes / 2;
-    renderContext.bounds = sc.m->bounds;
 
     checkCudaErrors(cudaMalloc((void**)&renderContext.materials, sc.numMaterials * sizeof(material)));
     checkCudaErrors(cudaMemcpy(renderContext.materials, sc.materials, sc.numMaterials * sizeof(material), cudaMemcpyHostToDevice));
@@ -730,7 +680,6 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
     }
 #endif
     renderContext.cam = cam;
-    renderContext.numPrimitivesPerLeaf = sc.numPrimitivesPerLeaf;
     renderContext.initStats();
 }
 
@@ -757,7 +706,7 @@ cleanupRenderer() {
     checkCudaErrors(cudaFree(renderContext.d_bvh));
     checkCudaErrors(cudaDestroyTextureObject(renderContext.bvh_tex));
 #else
-    checkCudaErrors(cudaFree(renderContext.bvh));
+    checkCudaErrors(cudaFree(renderContext.nodes));
 #endif // USE_BVH_TEXTURE
 
 

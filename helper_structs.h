@@ -1,7 +1,8 @@
 #pragma once
 
+#include <vector>
 #include <cuda_runtime.h>
-#include "vec3.h"
+#include "../bvh-builder/geometry.h"
 
 //#define PATH_DBG
 //#define BVH_COUNT
@@ -70,58 +71,9 @@ struct path {
 
 };
 
-struct bbox {
-    vec3 min;
-    vec3 max;
-
-    bbox() {}
-    __host__ __device__ bbox(vec3 _min, vec3 _max) :min(_min), max(_max) {}
-};
-
-struct triangle {
-    triangle() {}
-    triangle(vec3 v0, vec3 v1, vec3 v2, float tc[6], unsigned char mID) {
-        v[0] = v0;
-        v[1] = v1;
-        v[2] = v2;
-        meshID = mID;
-
-        for (auto i = 0; i < 6; i++)
-            texCoords[i] = tc[i];
-    }
-
-    vec3 v[3];
-    float texCoords[6];
-    unsigned char meshID;
-};
-
-struct bvh_node {
-    __host__ __device__ bvh_node() {}
-    bvh_node(const vec3& A, const vec3& B) :a(A), b(B) {}
-    __device__ bvh_node(float x0, float y0, float z0, float x1, float y1, float z1) : a(x0, y0, z0), b(x1, y1, z1) {}
-
-    __device__ vec3 min() const { return a; }
-    __device__ vec3 max() const { return b; }
-
-    __host__ __device__ unsigned int split_axis() const { return max_component(b - a); }
-
-    vec3 a;
-    vec3 b;
-};
-
 struct mesh {
-    triangle* tris;
-    uint32_t numTris;
-
-    bvh_node* bvh;
-    int numBvhNodes;
-
-    bbox bounds;
-
-    ~mesh() {
-        delete[] tris;
-        delete[] bvh;
-    }
+    std::vector<LinearTriangle> tris;
+    std::vector<LinearBVHNode> nodes;
 };
 
 enum material_type {

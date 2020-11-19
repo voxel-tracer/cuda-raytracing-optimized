@@ -51,7 +51,7 @@ __device__ float planeHit(const plane& p, const ray& r, float t_min, float t_max
     return t;
 }
 
-__device__ float triangleHit(const triangle &tri, const ray& r, float t_min, float t_max, float& hitU, float& hitV) {
+__device__ float triangleHit(const LinearTriangle &tri, const ray& r, float t_min, float t_max, float& hitU, float& hitV) {
     const float EPSILON = 0.0000001;
     vec3 edge1, edge2, h, s, q;
     float a, f, u, v;
