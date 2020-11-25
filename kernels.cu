@@ -10,7 +10,7 @@
 
 #include "kernels.h"
 
-#define STATS
+//#define STATS
 #define RUSSIAN_ROULETTE
 #define SHADOW
 #define TEXTURES
@@ -302,12 +302,9 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 #else
 
 __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
-    vec3 invDir(1.0f / r.direction().x(), 1.0f / r.direction().y(), 1.0f / r.direction().z());
-    int dirIsNeg[3] = { invDir[0] < 0, invDir[1] < 0, invDir[2] < 0 };
-
     // Follow ray through BVH nodes to find primitive intersections
-    int toVisitOffset = 0, currentNodeIndex = 0;
-    int nodesToVisit[64];
+    int toVisitOffset = 0, currentOffset = 0, currentNPrimitives = 0;
+    int nodesToVisit[64 * 2];
     
     float closest = t_max;
 
@@ -317,53 +314,79 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
     uint64_t numPrimHits = 0;
 #endif // STATS
 
-    while (true) {
-        const LinearBVHNode* node = &context.nodes[currentNodeIndex];
-#ifdef STATS
-        numNodes++;
-#endif // STATS
+    // nodes[0] is automatically intersected
+    currentOffset = 1;
 
-        // Check ray against BVH node
-        if (hit_bbox_dist(node->bounds.pMin, node->bounds.pMax, r, closest) < closest) {
-            if (node->nPrimitives > 0) {
-                // Intersect ray with primitives in leaf BVH node
-                for (int i = 0; i < node->nPrimitives; i++) {
-                    float u, v;
-                    float hitT = triangleHit(context.tris[node->primitivesOffset + i], r, t_min, closest, u, v);
+    while (true) {
+        if (currentNPrimitives > 0) {
+            // Intersect ray with primitives in leaf BVH node
+            for (int i = 0; i < currentNPrimitives; i++) {
+                float u, v;
+                float hitT = triangleHit(context.tris[currentOffset + i], r, t_min, closest, u, v);
 #ifdef STATS
-                    numPrimitives++;
+                numPrimitives++;
 #endif // STATS
-                    if (hitT < closest) {
+                if (hitT < closest) {
 #ifdef STATS
-                        numPrimHits++;
+                    numPrimHits++;
 #endif // STATS
-                        if (isShadow) {
+                    if (isShadow) {
 #ifdef STATS
-                            updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
+                        updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
 #endif // STATS
-                            return 0.0f;
-                        }
-                        closest = hitT;
-                        rec.triId = node->primitivesOffset + i;
-                        rec.u = u;
-                        rec.v = v;
+                        return 0.0f;
                     }
-                }
-                if (toVisitOffset == 0) break;
-                currentNodeIndex = nodesToVisit[--toVisitOffset];
-            } else {
-                // Put the far BVH node on nodesToVisit stack, advance to near node
-                if (dirIsNeg[node->axis]) {
-                    nodesToVisit[toVisitOffset++] = currentNodeIndex + 1;
-                    currentNodeIndex = node->secondChildOffset;
-                } else {
-                    nodesToVisit[toVisitOffset++] = node->secondChildOffset;
-                    currentNodeIndex = currentNodeIndex + 1;
+                    closest = hitT;
+                    rec.triId = currentOffset + i;
+                    rec.u = u;
+                    rec.v = v;
                 }
             }
-        } else {
             if (toVisitOffset == 0) break;
-            currentNodeIndex = nodesToVisit[--toVisitOffset];
+            currentOffset = nodesToVisit[--toVisitOffset];
+            currentNPrimitives = nodesToVisit[--toVisitOffset];
+        } else {
+            // load both children at once
+            const LinearBVHNode left = context.nodes[currentOffset];
+            const LinearBVHNode right = context.nodes[currentOffset + 1];
+            float leftDist = hit_bbox_dist(left.bounds.pMin, left.bounds.pMax, r, closest);
+            bool traverseLeft = leftDist < FLT_MAX;
+            float rightDist = hit_bbox_dist(right.bounds.pMin, right.bounds.pMax, r, closest);
+            bool traverseRight = rightDist < FLT_MAX;
+#ifdef STATS
+            numNodes += 2;
+#endif // STATS
+            bool swap = rightDist < leftDist;
+            // push one of the nodes if both are intersected
+            if (traverseLeft && traverseRight) {
+                // push far node
+                if (swap) {
+                    // push left node
+                    nodesToVisit[toVisitOffset++] = left.nPrimitives;
+                    nodesToVisit[toVisitOffset++] = left.firstChildOffset;
+                } else {
+                    // push right node
+                    nodesToVisit[toVisitOffset++] = right.nPrimitives;
+                    nodesToVisit[toVisitOffset++] = right.firstChildOffset;
+                }
+            }
+            if (traverseLeft || traverseRight) {
+                // move to closest node
+                if (swap) {
+                    // right is closest
+                    currentNPrimitives = right.nPrimitives;
+                    currentOffset = right.firstChildOffset;
+                } else {
+                    // left is closest
+                    currentNPrimitives = left.nPrimitives;
+                    currentOffset = left.firstChildOffset;
+                }
+            } else {
+                // pop next node to visit
+                if (toVisitOffset == 0) break;
+                currentOffset = nodesToVisit[--toVisitOffset];
+                currentNPrimitives = nodesToVisit[--toVisitOffset];
+            }
         }
     }
 #ifdef STATS
