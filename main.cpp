@@ -60,12 +60,12 @@ bool loadReference(const std::string file, vec3* reference, int nx, int ny) {
 }
 
 int main(int argc, char** argv) {
-    bool perf = false;
+    bool perf = true;
     bool fast = false;
     int nx = (!perf && !fast) ? 640 : (!perf ? 640 : 160);
     int ny = (!perf && !fast) ? 800 : (!perf ? 800 : 200);
     int ns = (!perf && !fast) ? 1024 : (!perf ? 256 : 4); //!perf ? (fast ? 64 : 1024) : 4;
-    int maxDepth = 64;
+    int maxDepth = perf ? 8 : 64;
     int tx = 8;
     int ty = 8;
     bool rmse = true;
