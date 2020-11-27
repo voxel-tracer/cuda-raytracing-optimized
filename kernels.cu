@@ -347,40 +347,31 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             currentNPrimitives = nodesToVisit[--toVisitOffset];
         } else {
             // load both children at once
-            const LinearBVHNode left = context.nodes[currentOffset];
-            const LinearBVHNode right = context.nodes[currentOffset + 1];
-            float leftDist = hit_bbox_dist(left.bounds.pMin, left.bounds.pMax, r, closest);
-            bool traverseLeft = leftDist < FLT_MAX;
-            float rightDist = hit_bbox_dist(right.bounds.pMin, right.bounds.pMax, r, closest);
-            bool traverseRight = rightDist < FLT_MAX;
+            LinearBVHNode* left = &context.nodes[currentOffset];
+            LinearBVHNode* right = &context.nodes[currentOffset + 1];
+            float leftDist = hit_bbox_dist(left->bounds.pMin, left->bounds.pMax, r, closest);
+            bool traverseLeft = leftDist < closest;
+            float rightDist = hit_bbox_dist(right->bounds.pMin, right->bounds.pMax, r, closest);
+            bool traverseRight = rightDist < closest;
 #ifdef STATS
             numNodes += 2;
 #endif // STATS
-            bool swap = rightDist < leftDist;
+            // swap nodes if right is closer than left
+            if (rightDist < leftDist) { // swap nodes so that left is closest node
+                LinearBVHNode* tmp = left;
+                left = right;
+                right = tmp;
+            }
             // push one of the nodes if both are intersected
             if (traverseLeft && traverseRight) {
                 // push far node
-                if (swap) {
-                    // push left node
-                    nodesToVisit[toVisitOffset++] = left.nPrimitives;
-                    nodesToVisit[toVisitOffset++] = left.firstChildOffset;
-                } else {
-                    // push right node
-                    nodesToVisit[toVisitOffset++] = right.nPrimitives;
-                    nodesToVisit[toVisitOffset++] = right.firstChildOffset;
-                }
+                nodesToVisit[toVisitOffset++] = right->nPrimitives;
+                nodesToVisit[toVisitOffset++] = right->firstChildOffset;
             }
             if (traverseLeft || traverseRight) {
                 // move to closest node
-                if (swap) {
-                    // right is closest
-                    currentNPrimitives = right.nPrimitives;
-                    currentOffset = right.firstChildOffset;
-                } else {
-                    // left is closest
-                    currentNPrimitives = left.nPrimitives;
-                    currentOffset = left.firstChildOffset;
-                }
+                currentNPrimitives = left->nPrimitives;
+                currentOffset = left->firstChildOffset;
             } else {
                 // pop next node to visit
                 if (toVisitOffset == 0) break;
