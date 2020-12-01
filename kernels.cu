@@ -18,7 +18,6 @@
 #define EPSILON 0.01f
 
 //#define DUAL_NODES
-//#define BVH_COUNT
 
 //#define USE_BVH_TEXTURE
 
@@ -200,112 +199,11 @@ __device__ void updateBvhStats(const RenderContext& context, uint64_t numNodes, 
 #endif // STATS
 
 #ifdef DUAL_NODES
-
-__device__ void pop_bitstack(unsigned int& bitStack, int& idx) {
-    int m = __ffsll(bitStack) - 1;
-    bitStack = (bitStack >> m) ^ 1;
-    idx = (idx >> m) ^ 1;
-}
-
-__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
-    int idx = 1;
-    float closest = t_max;
-    unsigned int bitStack = 1;
-#ifdef BVH_COUNT
-    uint64_t traversed_single = 0;
-    uint64_t traversed_both = 0;
-#endif
-#ifdef STATS
-    uint64_t numLeaves = 0;
-    uint64_t numInternal = 0;
-    uint64_t numLeafHits = 0;
-#endif // STATS
-
-    while (idx) {
-        if (idx < context.firstLeafIdx) { // TODO we need to keep a flag if previously loaded children were leaf nodes (nPrimitives == 0)
-#ifdef STATS
-            numInternal += 2;
-#endif // STATS
-            // load both children nodes
-            int idx2 = idx << 1;
-#ifdef USE_BVH_TEXTURE
-            int float4_idx = idx * 3;
-            float4 bvh_a = tex1Dfetch<float4>(context.bvh_tex, float4_idx);
-            float4 bvh_b = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 1);
-            float4 bvh_c = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 2);
-
-            bvh_node left(bvh_a.x, bvh_a.y, bvh_a.z, bvh_a.w, bvh_b.x, bvh_b.y);
-            bvh_node right(bvh_b.z, bvh_b.w, bvh_c.x, bvh_c.y, bvh_c.z, bvh_c.w);
-#else
-            LinearBVHNode left = context.bvh[idx2];
-            LinearBVHNode right = context.bvh[idx2 + 1];
-#endif // USE_BVH_TEXTURE
-            float leftHit = hit_bbox_dist(left.bounds.pMin, left.bounds.pMax, r, closest);
-            bool traverseLeft = leftHit < closest;
-            float rightHit = hit_bbox_dist(right.bounds.pMin, right.bounds.pMax, r, closest);
-            bool traverseRight = rightHit < closest;
-            bool swap = rightHit < leftHit;
-            if (traverseLeft && traverseRight) {
-#ifdef BVH_COUNT
-                traversed_both++;
-#endif
-                idx = idx2 + (swap ? 1 : 0);
-                bitStack = (bitStack << 1) + 1;
-            } else if (traverseLeft || traverseRight) {
-#ifdef BVH_COUNT
-                traversed_single++;
-#endif
-                idx = idx2 + (swap ? 1 : 0);
-                bitStack = bitStack << 1;
-            } else {
-                pop_bitstack(bitStack, idx);
-            }
-        } else { // leaf node
-#ifdef STATS
-            numLeaves+= context.numPrimitivesPerLeaf;
-#endif
-            int first = (idx - context.firstLeafIdx) * context.numPrimitivesPerLeaf;
-            for (auto i = 0; i < context.numPrimitivesPerLeaf; i++) {
-                const LinearTriangle tri = context.tris[first + i];
-                if (isinf(tri.v[0].x()))
-                    break; // we reached the end of the primitives buffer
-                float u, v;
-                float hitT = triangleHit(tri, r, t_min, closest, u, v);
-                if (hitT < closest) {
-#ifdef STATS
-                    numLeafHits++;
-#endif // STATS
-                    if (isShadow) {
-#ifdef STATS
-                        updateBvhStats(context, numInternal, numLeaves, numLeafHits);
-#endif // STATS
-                        return 0.0f;
-                    }
-                    closest = hitT;
-                    rec.triId = first + i;
-                    rec.u = u;
-                    rec.v = v;
-                }
-            }
-            pop_bitstack(bitStack, idx); // TODO reset leaf flag if this call didn't move to sibling node
-        }
-    }
-#ifdef STATS
-    updateBvhStats(context, numInternal, numLeaves, numLeafHits);
-#endif // STATS
-#ifdef BVH_COUNT
-    context.addStat(NUM_NODES_BOTH, traversed_both);
-    context.addStat(NUM_NODES_SINGLE, traversed_single);
-#endif
-    return closest;
-}
-#else
-
 __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
     // Follow ray through BVH nodes to find primitive intersections
     int toVisitOffset = 0, currentOffset = 0, currentNPrimitives = 0;
     int nodesToVisit[64 * 2];
-    
+
     float closest = t_max;
 
 #ifdef STATS
@@ -345,7 +243,8 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             if (toVisitOffset == 0) break;
             currentOffset = nodesToVisit[--toVisitOffset];
             currentNPrimitives = nodesToVisit[--toVisitOffset];
-        } else {
+        }
+        else {
             // load both children at once
             LinearBVHNode* left = &context.nodes[currentOffset];
             LinearBVHNode* right = &context.nodes[currentOffset + 1];
@@ -372,12 +271,86 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
                 // move to closest node
                 currentNPrimitives = left->nPrimitives;
                 currentOffset = left->firstChildOffset;
-            } else {
+            }
+            else {
                 // pop next node to visit
                 if (toVisitOffset == 0) break;
                 currentOffset = nodesToVisit[--toVisitOffset];
                 currentNPrimitives = nodesToVisit[--toVisitOffset];
             }
+        }
+    }
+#ifdef STATS
+    updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
+#endif // STATS
+    return closest;
+}
+
+#else
+__device__ float hitBvh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool isShadow) {
+    vec3 invDir(1.0f / r.direction().x(), 1.0f / r.direction().y(), 1.0f / r.direction().z());
+    int dirIsNeg[3] = { invDir[0] < 0, invDir[1] < 0, invDir[2] < 0 };
+
+    // Follow ray through BVH nodes to find primitive intersections
+    int toVisitOffset = 0, currentNodeIndex = 0;
+    int nodesToVisit[64];
+
+    float closest = t_max;
+
+#ifdef STATS
+    uint64_t numPrimitives = 0;
+    uint64_t numNodes = 0;
+    uint64_t numPrimHits = 0;
+#endif // STATS
+
+    while (true) {
+        const LinearBVHNode* node = &context.nodes[currentNodeIndex];
+#ifdef STATS
+        numNodes++;
+#endif // STATS
+
+        // Check ray against BVH node
+        if (hit_bbox_dist(node->bounds.pMin, node->bounds.pMax, r, closest) < closest) {
+            if (node->nPrimitives > 0) {
+                // Intersect ray with primitives in leaf BVH node
+                for (int i = 0; i < node->nPrimitives; i++) {
+                    float u, v;
+                    float hitT = triangleHit(context.tris[node->primitivesOffset + i], r, t_min, closest, u, v);
+#ifdef STATS
+                    numPrimitives++;
+#endif // STATS
+                    if (hitT < closest) {
+#ifdef STATS
+                        numPrimHits++;
+#endif // STATS
+                        if (isShadow) {
+#ifdef STATS
+                            updateBvhStats(context, numNodes, numPrimitives, numPrimHits);
+#endif // STATS
+                            return 0.0f;
+                        }
+                        closest = hitT;
+                        rec.triId = node->primitivesOffset + i;
+                        rec.u = u;
+                        rec.v = v;
+                    }
+                }
+                if (toVisitOffset == 0) break;
+                currentNodeIndex = nodesToVisit[--toVisitOffset];
+            }
+            else {
+                // Put the far BVH node on nodesToVisit stack, advance to near node
+                if (dirIsNeg[node->axis]) {
+                    nodesToVisit[toVisitOffset++] = node->firstChildOffset + 1;
+                    currentNodeIndex = node->firstChildOffset;
+                } else {
+                    nodesToVisit[toVisitOffset++] = node->firstChildOffset;
+                    currentNodeIndex = node->firstChildOffset + 1;
+                }
+            }
+        } else {
+            if (toVisitOffset == 0) break;
+            currentNodeIndex = nodesToVisit[--toVisitOffset];
         }
     }
 #ifdef STATS
