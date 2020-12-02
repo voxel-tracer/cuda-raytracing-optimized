@@ -17,9 +17,8 @@
 
 #define EPSILON 0.01f
 
-//#define DUAL_NODES
-
-//#define USE_BVH_TEXTURE
+#define DUAL_NODES
+#define USE_BVH_TEXTURE
 
 
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
@@ -79,6 +78,7 @@ struct RenderContext {
     vec3* fb;
 
     LinearTriangle* tris;
+    Bounds3 bounds;
 
 #ifdef USE_BVH_TEXTURE
     float* d_bvh;
@@ -246,8 +246,32 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
         }
         else {
             // load both children at once
+#ifdef USE_BVH_TEXTURE
+            int float4_idx = currentOffset * 2;
+            float4 a = tex1Dfetch<float4>(context.bvh_tex, float4_idx);
+            float4 b = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 1);
+            float4 c = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 2);
+            float4 d = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 3);
+
+            LinearBVHNode lnode;
+            lnode.bounds.pMin = vec3(a.x, a.y, a.z);
+            lnode.bounds.pMax = vec3(a.w, b.x, b.y);
+            lnode.primitivesOffset = *(int*)&b.z;
+            lnode.nPrimitives = (*(int*)&b.w) & 0xFFFF;
+
+            LinearBVHNode rnode;
+            rnode.bounds.pMin = vec3(c.x, c.y, c.z);
+            rnode.bounds.pMax = vec3(c.w, d.x, d.y);
+            rnode.primitivesOffset = *(int*)&d.z;
+            rnode.nPrimitives = (*(int*)&d.w) & 0xFFFF;
+
+            LinearBVHNode* left = &lnode;
+            LinearBVHNode* right = &rnode;
+#else
             LinearBVHNode* left = &context.nodes[currentOffset];
             LinearBVHNode* right = &context.nodes[currentOffset + 1];
+#endif // USE_BVH_TEXTURE
+
             float leftDist = hit_bbox_dist(left->bounds.pMin, left->bounds.pMax, r, closest);
             bool traverseLeft = leftDist < closest;
             float rightDist = hit_bbox_dist(right->bounds.pMin, right->bounds.pMax, r, closest);
@@ -362,7 +386,7 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
 
 __device__ float hitMesh(const ray& r, const RenderContext& context, float t_min, float t_max, tri_hit& rec, bool primary, bool isShadow) {
     // TODO not really needed as it is equivalent to intersecting first node of BVH tree
-    if (!hit_bbox(context.nodes[0].bounds.pMin, context.nodes[0].bounds.pMax, r, t_max)) {
+    if (!hit_bbox(context.bounds.pMin, context.bounds.pMax, r, t_max)) {
 #ifdef STATS
         if (isShadow) context.incStat(NUM_RAYS_SHADOWS_BBOX_NOHITS);
         else context.incStat(primary ? NUM_RAYS_PRIMARY_BBOX_NOHITS : NUM_RAYS_SECONDARY_BBOX_NOHIT);
@@ -623,6 +647,7 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
     renderContext.ny = ny;
     renderContext.floor = sc.floor;
     renderContext.maxDepth = maxDepth;
+    renderContext.bounds = sc.m->nodes[0].bounds;
 
     size_t fb_size = nx * ny * sizeof(vec3);
     checkCudaErrors(cudaMallocManaged((void**)&(renderContext.fb), fb_size));
@@ -633,15 +658,15 @@ initRenderer(const kernel_scene sc, const camera cam, vec3 * *fb, int nx, int ny
 
 #ifdef USE_BVH_TEXTURE
     // copy bvh data to float array
-    checkCudaErrors(cudaMalloc((void**)&renderContext.d_bvh, sc.m->numBvhNodes * sizeof(bvh_node)));
-    checkCudaErrors(cudaMemcpy(renderContext.d_bvh, sc.m->bvh, sc.m->numBvhNodes * sizeof(bvh_node), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&renderContext.d_bvh, sc.m->nodes.size() * sizeof(LinearBVHNode)));
+    checkCudaErrors(cudaMemcpy(renderContext.d_bvh, &(sc.m->nodes[0]), sc.m->nodes.size() * sizeof(LinearBVHNode), cudaMemcpyHostToDevice));
 
     cudaResourceDesc texRes;
     memset(&texRes, 0, sizeof(cudaResourceDesc));
 
     texRes.resType = cudaResourceTypeLinear;
     texRes.res.linear.devPtr = renderContext.d_bvh;
-    texRes.res.linear.sizeInBytes = sizeof(bvh_node) * sc.m->numBvhNodes;
+    texRes.res.linear.sizeInBytes = sc.m->nodes.size() * sizeof(LinearBVHNode);
     texRes.res.linear.desc = cudaCreateChannelDesc<float4>();
 
     cudaTextureDesc texDescr;
