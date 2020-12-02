@@ -253,50 +253,50 @@ __device__ float hitBvh(const ray& r, const RenderContext& context, float t_min,
             float4 c = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 2);
             float4 d = tex1Dfetch<float4>(context.bvh_tex, float4_idx + 3);
 
-            LinearBVHNode lnode;
-            lnode.bounds.pMin = vec3(a.x, a.y, a.z);
-            lnode.bounds.pMax = vec3(a.w, b.x, b.y);
-            lnode.primitivesOffset = *(int*)&b.z;
-            lnode.nPrimitives = (*(int*)&b.w) & 0xFFFF;
+            LinearBVHNode left;
+            left.bounds.pMin = vec3(a.x, a.y, a.z);
+            left.bounds.pMax = vec3(a.w, b.x, b.y);
+            left.primitivesOffset = *(int*)&b.z;
+            left.nPrimitives = (*(int*)&b.w) & 0xFFFF;
 
-            LinearBVHNode rnode;
-            rnode.bounds.pMin = vec3(c.x, c.y, c.z);
-            rnode.bounds.pMax = vec3(c.w, d.x, d.y);
-            rnode.primitivesOffset = *(int*)&d.z;
-            rnode.nPrimitives = (*(int*)&d.w) & 0xFFFF;
-
-            LinearBVHNode* left = &lnode;
-            LinearBVHNode* right = &rnode;
+            LinearBVHNode right;
+            right.bounds.pMin = vec3(c.x, c.y, c.z);
+            right.bounds.pMax = vec3(c.w, d.x, d.y);
+            right.primitivesOffset = *(int*)&d.z;
+            right.nPrimitives = (*(int*)&d.w) & 0xFFFF;
 #else
             LinearBVHNode* left = &context.nodes[currentOffset];
             LinearBVHNode* right = &context.nodes[currentOffset + 1];
 #endif // USE_BVH_TEXTURE
 
-            float leftDist = hit_bbox_dist(left->bounds.pMin, left->bounds.pMax, r, closest);
+            float leftDist = hit_bbox_dist(left.bounds.pMin, left.bounds.pMax, r, closest);
             bool traverseLeft = leftDist < closest;
-            float rightDist = hit_bbox_dist(right->bounds.pMin, right->bounds.pMax, r, closest);
+            float rightDist = hit_bbox_dist(right.bounds.pMin, right.bounds.pMax, r, closest);
             bool traverseRight = rightDist < closest;
 #ifdef STATS
             numNodes += 2;
 #endif // STATS
-            // swap nodes if right is closer than left
-            if (rightDist < leftDist) { // swap nodes so that left is closest node
-                LinearBVHNode* tmp = left;
-                left = right;
-                right = tmp;
-            }
+            bool swap = rightDist < leftDist;
             // push one of the nodes if both are intersected
             if (traverseLeft && traverseRight) {
-                // push far node
-                nodesToVisit[toVisitOffset++] = right->nPrimitives;
-                nodesToVisit[toVisitOffset++] = right->firstChildOffset;
+                if (swap) { // push left node
+                    nodesToVisit[toVisitOffset++] = left.nPrimitives;
+                    nodesToVisit[toVisitOffset++] = left.firstChildOffset;
+                } else { // push right node
+                    nodesToVisit[toVisitOffset++] = right.nPrimitives;
+                    nodesToVisit[toVisitOffset++] = right.firstChildOffset;
+                }
             }
+            // move to closest node
             if (traverseLeft || traverseRight) {
-                // move to closest node
-                currentNPrimitives = left->nPrimitives;
-                currentOffset = left->firstChildOffset;
-            }
-            else {
+                if (swap) { // move to right node
+                    currentNPrimitives = right.nPrimitives;
+                    currentOffset = right.firstChildOffset;
+                } else { // move to left node
+                    currentNPrimitives = left.nPrimitives;
+                    currentOffset = left.firstChildOffset;
+                }
+            } else {
                 // pop next node to visit
                 if (toVisitOffset == 0) break;
                 currentOffset = nodesToVisit[--toVisitOffset];
